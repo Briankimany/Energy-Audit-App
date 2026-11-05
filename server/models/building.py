@@ -21,6 +21,7 @@ class Building(db.Model):
 
     __table_args__ = (
         db.UniqueConstraint("institution_id", "name", name="uq_buildings_institution_name"),
+        db.UniqueConstraint("institution_id", "id", name="uq_buildings_institution_id"),
         db.CheckConstraint("floor_area_m2 > 0", name="ck_buildings_floor_area_positive"),
         db.CheckConstraint(
             "operating_hours >= 1 AND operating_hours <= 24",
