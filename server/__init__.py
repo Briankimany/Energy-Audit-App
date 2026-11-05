@@ -1,7 +1,7 @@
 from flask import Flask, request
 
 from server import config, errors, extensions, logging
-from server.blueprints import auth_bp
+from server.blueprints import blueprints
 from server.responses import error_response
 
 
@@ -13,7 +13,8 @@ def create_app(config_object: str = "server.config.DevelopmentConfig"):
     errors.register_error_handlers(app)
     logging.register_error_logger(app)
 
-    app.register_blueprint(auth_bp)
+    for blueprint in blueprints:
+        app.register_blueprint(blueprint)
 
     @app.before_request
     def enforce_origin():

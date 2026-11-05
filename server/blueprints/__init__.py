@@ -1,3 +1,8 @@
 from server.blueprints.auth_bp import bp as auth_bp
+from server.blueprints.buildings_bp import bp as buildings_bp
+from server.blueprints.institution_bp import bp as institution_bp
+from server.blueprints.users_bp import bp as users_bp
 
-__all__ = ["auth_bp"]
+blueprints = [auth_bp, institution_bp, users_bp, buildings_bp]
+
+__all__ = ["blueprints"]

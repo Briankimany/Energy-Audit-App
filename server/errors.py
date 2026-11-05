@@ -27,6 +27,10 @@ class UnauthorizedError(ApiError):
     status_code = 401
 
 
+class ForbiddenError(ApiError):
+    status_code = 403
+
+
 def register_error_handlers(app) -> None:
     @app.errorhandler(ApiError)
     def handle_api_error(exc: ApiError):

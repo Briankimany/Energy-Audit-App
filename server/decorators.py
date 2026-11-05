@@ -2,7 +2,7 @@ import functools
 
 from flask import g, request
 
-from server.errors import UnauthorizedError
+from server.errors import ForbiddenError, UnauthorizedError
 from server.repositories.user_repo import UserRepository
 from server.services.auth_service import decode_token
 
@@ -25,3 +25,17 @@ def require_auth(fn):
         return fn(*args, **kwargs)
 
     return wrapper
+
+
+def require_role(*roles):
+    def decorator(fn):
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            user = getattr(g, "current_user", None)
+            if user is None or user.role not in roles:
+                raise ForbiddenError("Forbidden")
+            return fn(*args, **kwargs)
+
+        return wrapper
+
+    return decorator

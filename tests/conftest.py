@@ -4,6 +4,13 @@ from flask import Blueprint
 from server import create_app, extensions
 from server.errors import BusinessError
 
+REGISTER_PAYLOAD = {
+    "institution_name": "Test Institute",
+    "admin_name": "Admin User",
+    "admin_email": "admin@test.org",
+    "password": "password123",
+}
+
 
 @pytest.fixture()
 def app():
@@ -34,3 +41,32 @@ def error_client(app):
 
     app.register_blueprint(probe)
     return app.test_client()
+
+
+@pytest.fixture()
+def registered(client):
+    res = client.post("/api/auth/register-institution", json=REGISTER_PAYLOAD)
+    return res.get_json()["data"]
+
+
+@pytest.fixture()
+def admin_headers(registered):
+    return {"Authorization": f"Bearer {registered['access_token']}"}
+
+
+@pytest.fixture()
+def auditor_headers(client, admin_headers):
+    client.post(
+        "/api/users",
+        headers=admin_headers,
+        json={
+            "name": "Auditor User",
+            "email": "auditor@test.org",
+            "password": "password123",
+        },
+    )
+    res = client.post(
+        "/api/auth/login",
+        json={"email": "auditor@test.org", "password": "password123"},
+    )
+    return {"Authorization": f"Bearer {res.get_json()['data']['access_token']}"}

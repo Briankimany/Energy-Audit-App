@@ -1,6 +1,5 @@
 import datetime
 
-import bcrypt
 import jwt
 from flask import current_app
 
@@ -9,15 +8,7 @@ from server.errors import BusinessError, NotFoundError, UnauthorizedError
 from server.models.institution import Institution
 from server.models.user import User
 from server.repositories.user_repo import UserRepository
-
-
-def _hash_password(password: str) -> str:
-    rounds = current_app.config["BCRYPT_ROUNDS"]
-    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt(rounds=rounds)).decode("utf-8")
-
-
-def _verify_password(password: str, password_hash: str) -> bool:
-    return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
+from server.utils.security import hash_password, verify_password
 
 
 def create_token(user: User) -> str:
@@ -55,7 +46,7 @@ def register_institution(payload: dict) -> dict:
         institution=institution,
         name=admin_name,
         email=admin_email,
-        password_hash=_hash_password(password),
+        password_hash=hash_password(password),
         role="admin",
         must_change_password=True,
     )
@@ -78,7 +69,7 @@ def login(payload: dict) -> dict:
     password = payload["password"]
 
     user = UserRepository().find_by_email(email)
-    if user is None or not _verify_password(password, user.password_hash):
+    if user is None or not verify_password(password, user.password_hash):
         raise UnauthorizedError("Invalid email or password")
 
     return {
@@ -102,9 +93,9 @@ def change_password(user_id: int, payload: dict) -> None:
     if user is None:
         raise NotFoundError("User not found")
 
-    if not _verify_password(payload["current_password"], user.password_hash):
+    if not verify_password(payload["current_password"], user.password_hash):
         raise UnauthorizedError("Current password is incorrect")
 
-    user.password_hash = _hash_password(payload["new_password"])
+    user.password_hash = hash_password(payload["new_password"])
     user.must_change_password = False
     db.session.commit()
