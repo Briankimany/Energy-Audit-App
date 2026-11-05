@@ -1,0 +1,8 @@
+Flask>=3.1
+Flask-SQLAlchemy>=3.1
+PyJWT>=2.9
+bcrypt>=4.1
+mysql-connector-python>=8.4
+python-dotenv>=1.0
+Flask-CORS>=4.0
+pytest>=8.3
