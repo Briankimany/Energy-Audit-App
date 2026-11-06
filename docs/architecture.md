@@ -1,209 +1,345 @@
 # Architecture — Information Flow
 
-This document describes how a request travels through the app, from HTTP wire to database and back. It is **not** a file listing.
+Related docs: [API reference](api.md) · [Formulas](formulas.md) · [What has been built](what-has-been-built.md)
 
-## Core request lifecycle (every request)
+This document explains how information moves through the system: requests, authentication, tenant scoping, database access, analysis, CSV ingestion, and configuration. It contains no file-tree diagrams.
 
-```
-Browser / curl
-     │
-     ▼
-create_app()  (server/__init__.py)
-     │
-     ├─ extensions.db.init_app(app)          # bind SQLAlchemy
-     ├─ errors.register_error_handlers(app)  # ApiError → JSON envelopes
-     ├─ logging.register_error_logger(app)   # file + console, LOG_LEVEL env
-     ├─ register all blueprints              # one blueprint per domain
-     └─ before_request: enforce_origin()     # CORS origin backstop
-     │
-     ▼
-Route matched → Blueprint handler
-     │
-     ├─ require_auth decorator               # Bearer token → g.current_user
-     │     ├─ read Authorization header
-     │     ├─ decode JWT (sub=user id, institution_id, role)
-     │     ├─ UserRepository().find_by_id(sub)
-     │     └─ store user on Flask g (request-local)
-     │
-     └─ Schema validation (if body)          # required fields, types, ranges
-           │
-           ▼
-Service layer (business rules)
-     │
-     ├─ Repository queries                     # tenant-scoped SQL
-     │     └─ WHERE institution_id = g.current_user.institution_id
-     │           AND ... (building_id, etc.)
-     │
-     └─ Return plain dict / model
-           │
-           ▼
-Blueprint returns success_response(...) or raises ApiError
-     │
-     ├─ success → {status:"success", message, data}
-     ├─ ApiError  → {status, message, errors} with exc.status_code
-     └─ unexpected → 500 {status:500, message:"internal server error"}
-     │
-     ▼
-Flask returns JSON to client
-     │
-     ▼
-extensions.db.session.remove()  (teardown_appcontext)
+## 1. System context
+
+```mermaid
+flowchart LR
+    U[Browser] -->|HTML navigation| P[Flask pages blueprint]
+    U -->|JSON over HTTPS| A[Flask API blueprints]
+    P --> APP[Flask application]
+    A --> APP
+    APP --> DB[(MySQL)]
+    APP --> LOG[Rotating log file]
+    U -.->|loads assets| CDN[Chart.js and Inter font CDN]
+    ENV[Environment variables or .env] --> APP
 ```
 
-## Auth flow (login → authenticated requests)
+The browser loads server-rendered HTML from the pages blueprint and then calls the JSON API directly with the stored bearer token. The Flask application is the only component that talks to MySQL. All persistence, tenant checks, and calculations happen server-side.
 
-```
-1. POST /auth/register-institution
-   Body: {institution_name, admin_name, admin_email, password}
-   Service: Institution + User(admin) created in ONE transaction.
-            Password hashed with bcrypt, must_change_password=True.
-   Returns: access_token (JWT), institution_id, user_id.
+## 2. Request lifecycle
 
-2. POST /auth/login
-   Body: {email, password}
-   Service: find user by email, verify bcrypt, issue JWT:
-            sub=user.id, institution_id, role, iat, exp.
-   Returns: access_token.
+```mermaid
+sequenceDiagram
+    autonumber
+    participant B as Browser
+    participant F as Flask app
+    participant G as require_auth
+    participant S as Schema validator
+    participant V as Service
+    participant R as Repository
+    participant D as MySQL
 
-3. Every subsequent request:
-   Client sends: Authorization: Bearer <access_token>
-   require_auth:
-     - decode JWT → payload.sub, payload.institution_id, payload.role
-     - UserRepository().find_by_id(sub) → g.current_user
-     - All repository queries for this request are scoped to
-       g.current_user.institution_id.
-   If token missing/invalid → 401 UnauthorizedError.
-```
+    B->>F: HTTP request
+    F->>F: before_request enforce_origin
+    alt Origin header present and not allowed
+        F-->>B: 403 origin not allowed
+    end
 
-## Tenant isolation flow (the "one institution" rule)
+    alt Protected API route
+        F->>G: Authorization Bearer token
+        G->>G: decode JWT with SECRET_KEY
+        G->>R: find user by payload.sub
+        R->>D: SELECT users WHERE id = sub
+        D-->>R: user row
+        R-->>G: user
+        G->>G: store user on Flask g.current_user
+    end
 
-Every child table has `institution_id` and a **composite foreign key**:
-
-```
-buildings.institution_id references institutions.id
-energy_records.(institution_id, building_id) references buildings.(institution_id, id)
-```
-
-Flow for any data request (e.g., `GET /buildings/5/energy`):
-
-```
-1. require_auth → g.current_user (institution_id = 42)
-2. buildings_service.list_records(user, building_id=5)
-   → EnergyRepository().list_for_building(
-       institution_id=42, building_id=5
-     )
-   → SQL: WHERE institution_id = 42 AND building_id = 5
-3. If no row matches → NotFoundError → 404 (cross-tenant looks like "not exist")
+    F->>S: parse JSON object and validate fields
+    S-->>F: cleaned payload or ValidationError
+    F->>V: execute business operation
+    V->>R: tenant-scoped query
+    R->>D: SQL filtered by institution_id
+    D-->>R: rows
+    R-->>V: model objects
+    V-->>F: serialized dict or model
+    F-->>B: JSON success or error envelope
+    F->>D: teardown removes SQLAlchemy session
 ```
 
-Result: Institution A can never see Institution B's buildings/records/users because every query is filtered by `institution_id` from the JWT, and the URL/body never supplies the institution.
+The invariant is one commit per request and one session cleanup per application context teardown. Services call repositories; blueprints never query the ORM directly.
 
-## Energy record flow
+## 3. Authentication and session flow
 
-```
-POST /buildings/:id/energy
-Body: {month, kwh, cost}
-│
-├─ require_auth (user from JWT)
-├─ energy_schema: month YYYY-MM, kwh >= 0, cost >= 0
-├─ service: building belongs to user's institution?
-├─ service: month not already recorded for this building?
-│   → duplicate → 409 BusinessError
-├─ repo: INSERT energy_records (institution_id, building_id, month, kwh, cost)
-│   → commit once
-└─ return created record
-```
+```mermaid
+sequenceDiagram
+    autonumber
+    participant B as Browser
+    participant API as Auth blueprint
+    participant AS as Auth service
+    participant UR as User repository
+    participant DB as MySQL
 
-## CSV import flow (validate-then-confirm)
+    rect rgb(240, 248, 255)
+    Note over B,DB: Registration
+    B->>API: POST /api/auth/register-institution
+    API->>API: validate institution_name, admin_name, admin_email, password
+    API->>AS: register_institution(payload)
+    AS->>UR: find_by_email(admin_email)
+    UR->>DB: SELECT users WHERE email = admin_email
+    DB-->>UR: none
+    AS->>AS: hash password with bcrypt
+    AS->>DB: INSERT institution and admin user in one transaction
+    AS->>AS: create JWT with sub, institution_id, role, iat, exp
+    AS-->>API: institution_id, user_id, access_token, token_type
+    API-->>B: 201 success envelope
+    end
 
-```
-POST /buildings/:id/energy/import
-Body: {csv: "month,kwh,cost\n...", confirm: false|true}
+    rect rgb(245, 255, 245)
+    Note over B,DB: Login
+    B->>API: POST /api/auth/login
+    API->>AS: login(payload)
+    AS->>UR: find_by_email(email)
+    UR->>DB: SELECT users WHERE email = email
+    DB-->>UR: user row
+    AS->>AS: bcrypt check password
+    AS->>AS: create JWT
+    AS-->>API: access_token, token_type, user summary
+    API-->>B: 200 success envelope
+    end
 
-1. validate_import_payload: csv is string, confirm is boolean
-2. parse_energy_csv(text) — pure function, no DB:
-   - header must be exactly month,kwh,cost
-   - each row: month YYYY-MM, kwh >= 0 number, cost >= 0 number
-   - duplicate months within file flagged
-   - returns (parsed_rows, errors with row numbers)
-3. If confirm == false:
-     return {valid_rows, errors, imported: 0, requires_confirmation: true}
-     (NOTHING is written to DB)
-4. If confirm == true:
-     for each parsed row:
-       - month already recorded for this building? → error, skip
-       - else repo.create(...)
-     commit once
-     return {valid_rows, errors, imported: N}
-```
-
-## Analysis / dashboard flow
-
-```
-GET /buildings/:id/analysis
-│
-├─ require_auth
-├─ dashboard_service.analyze_building(user, building_id)
-│   ├─ repo: building belongs to institution?
-│   ├─ repo: all energy records for this building
-│   ├─ analysis.annual_kwh(records)   = sum kwh
-│   ├─ analysis.annual_cost(records)  = sum cost
-│   ├─ analysis.eui(total_kwh, floor_area)   = None if <12 months
-│   ├─ analysis.anomaly_months(records)      = month >30% above avg of others
-│   └─ return dict
-└─ return JSON with totals, EUI, note (complete/partial/insufficient), anomalies
-
-GET /analysis/compare
-│
-├─ for each building in institution:
-│   ├─ annual kWh/cost, EUI
-│   └─ collect building types
-├─ analysis.compare_buildings(analyses, types)
-│   └─ warning if >1 distinct building type
-└─ return {comparisons, warning}
-
-GET /dashboard
-│
-├─ for each building: total kWh, total cost (ALL buildings, even incomplete)
-├─ monthly_series aggregated across buildings by month
-├─ comparisons (only buildings with complete EUI)
-├─ anomalies collected across all buildings
-└─ return {building_count, total_kwh, total_cost, monthly_series, comparisons, warning, anomalies}
+    rect rgb(255, 250, 240)
+    Note over B,DB: Authenticated request
+    B->>API: GET /api/auth/session with Authorization Bearer token
+    API->>API: require_auth decodes JWT
+    API->>UR: find_by_id(payload.sub)
+    UR->>DB: SELECT users WHERE id = sub
+    DB-->>UR: user
+    API-->>B: user summary including institution_name
+    end
 ```
 
-## Response envelopes
+The token payload is:
 
-Success (from `responses.success_response`):
 ```json
-{ "status": "success", "message": "...", "data": { ... }, "meta": null }
+{
+  "sub": "1",
+  "institution_id": "1",
+  "role": "admin",
+  "iat": 1760000000,
+  "exp": 1760003600
+}
 ```
 
-Error (from `server/errors.py` handlers):
-```json
-{ "status": 400, "message": "...", "errors": { "field": ["reason"] } }
+The token is signed with HS256 using `SECRET_KEY`, which is populated from `JWT_SECRET`. The browser stores the token under `energy_audit_token` and sends it as `Authorization: Bearer <token>`. The server never uses cookies for identity.
+
+## 4. Tenant isolation flow
+
+```mermaid
+flowchart TD
+    J[JWT payload] --> I[institution_id from token]
+    I --> Q[Every repository query adds institution filter]
+    Q --> BQ[buildings WHERE institution_id = token institution_id]
+    Q --> UQ[users WHERE institution_id = token institution_id]
+    Q --> EQ[energy_records WHERE institution_id = token institution_id]
+    BQ --> M{row exists and matches?}
+    UQ --> M
+    EQ --> M
+    M -->|yes| OK[return serialized data]
+    M -->|no| NF[404 Not Found]
 ```
 
-Unexpected exception → 500 `{ "status": 500, "message": "internal server error", "errors": {} }`, logged via `app.logger.exception`.
+Two database constraints enforce the same rule structurally:
 
-## Configuration flow
+- `buildings` has a unique key on `(institution_id, id)`.
+- `energy_records` has a composite foreign key from `(institution_id, building_id)` to `buildings(institution_id, id)`.
 
+The scope always comes from the JWT. URL parameters and request bodies never supply `institution_id`. Cross-tenant access therefore looks identical to a missing row: the server returns 404 rather than revealing that the row exists elsewhere.
+
+## 5. Data model
+
+```mermaid
+erDiagram
+    INSTITUTIONS ||--o{ USERS : contains
+    INSTITUTIONS ||--o{ BUILDINGS : contains
+    BUILDINGS ||--o{ ENERGY_RECORDS : records
+
+    INSTITUTIONS {
+        bigint id PK
+        string name UK
+        string currency
+        int max_buildings
+        datetime created_at
+    }
+
+    USERS {
+        bigint id PK
+        bigint institution_id FK
+        string name
+        string email UK
+        string password_hash
+        string role
+        boolean must_change_password
+        datetime created_at
+    }
+
+    BUILDINGS {
+        bigint id PK
+        bigint institution_id FK
+        string name
+        string type
+        decimal floor_area_m2
+        int operating_hours
+    }
+
+    ENERGY_RECORDS {
+        bigint id PK
+        bigint institution_id FK
+        bigint building_id FK
+        date month
+        decimal kwh
+        decimal cost
+    }
 ```
-Environment variables (or .env)
-     │
-     ├─ MYSQL_HOST/PORT/USER/PASSWORD/DATABASE
-     │     └─ build_database_url() → SQLALCHEMY_DATABASE_URI
-     │           (port omitted if MYSQL_PORT empty → PythonAnywhere safe)
-     ├─ JWT_SECRET, JWT_EXPIRATION_SECONDS, BCRYPT_ROUNDS
-     ├─ CORS_ORIGINS (empty = none allowed)
-     ├─ LOG_LEVEL (default DEBUG) → logging.py
-     └─ DATABASE_URL (override for full URL, bypasses MYSQL_*)
-           │
-           ▼
-create_app(config_object) loads the class, builds the URL,
-initializes extensions, registers blueprints and handlers.
+
+Important column semantics:
+
+- `energy_records.month` stores the first day of the month. The API always exposes it as `YYYY-MM`.
+- `energy_records` is unique on `(building_id, month)`, so a building cannot have two records for the same month.
+- `buildings` is unique on `(institution_id, name)` and on `(institution_id, id)`.
+- `users.email` is globally unique.
+- `buildings.floor_area_m2` must be greater than 0.
+- `buildings.operating_hours` must be between 1 and 24.
+- `energy_records.kwh` and `energy_records.cost` must be greater than or equal to 0.
+- Deleting an institution cascades to users and buildings; deleting a building cascades to its energy records.
+
+## 6. Analysis pipeline
+
+```mermaid
+flowchart LR
+    ER[energy_records for one building] --> AK[annual_kwh = sum kwh]
+    ER --> AC[annual_cost = sum cost]
+    ER --> MS[monthly_series]
+    ER --> EU[eui = total_kwh / floor_area_m2]
+    ER --> AN[anomaly_months]
+
+    AK --> BA[building analysis payload]
+    AC --> BA
+    MS --> BA
+    EU --> BA
+    AN --> BA
+    BA --> RESP1[GET /buildings/id/analysis]
+
+    BA --> CMP[compare_buildings]
+    CMP --> TYP{more than one building type?}
+    TYP -->|yes| WARN[warning string]
+    TYP -->|no| NOWARN[warning null]
+    CMP --> RESP2[GET /analysis/compare]
+
+    ER --> AGG[aggregation_by_month]
+    AGG --> DS[dashboard summary]
+    AK --> DS
+    AC --> DS
+    AN --> DS
+    DS --> RESP3[GET /dashboard]
 ```
 
-## What is NOT built yet (phases 5–7)
-- Equipment CRUD, reconciliation gap %, simple payback
-- Findings & recommendations (library measures, payback)
-- Reports, PDF (WeasyPrint), export, seed script, final validation
+The analysis module is intentionally pure: it receives lists of model objects or dictionaries and returns plain dictionaries. It does not query the database. The dashboard service is the orchestration layer that fetches data, calls the pure functions, and assembles the response.
+
+## 7. CSV import flow
+
+```mermaid
+flowchart TD
+    IN[POST csv text and confirm flag] --> EMPTY{csv non-empty?}
+    EMPTY -->|no| E0[error row 0: CSV is empty]
+    EMPTY -->|yes| HDR{header equals month,kwh,cost?}
+    HDR -->|no| E1[error row 1: invalid header]
+    HDR -->|yes| LOOP[iterate data rows]
+
+    LOOP --> BLANK{blank row?}
+    BLANK -->|yes| SKIP[skip row]
+    BLANK -->|no| CELLS{at least 3 cells?}
+    CELLS -->|no| EROW[append row error]
+    CELLS -->|yes| PARSE[parse month, kwh, cost]
+
+    PARSE --> MONTH{month matches YYYY-MM?}
+    MONTH -->|no| EROW
+    MONTH -->|yes| NUM{kwh and cost are numbers and non-negative?}
+    NUM -->|no| EROW
+    NUM -->|yes| DUPFILE{duplicate month in file?}
+    DUPFILE -->|yes| EROW
+    DUPFILE -->|no| DUPDB{month already in database?}
+    DUPDB -->|yes| EROW
+    DUPDB -->|no| VALID[append to valid rows]
+
+    EROW --> ERR[errors list]
+    VALID --> CONFIRM{confirm is true?}
+    ERR --> CONFIRM
+    SKIP --> CONFIRM
+
+    CONFIRM -->|no| DRY[return valid_rows, errors, imported 0, requires_confirmation true]
+    CONFIRM -->|yes| INSERT[insert valid rows only, commit once]
+    INSERT --> DONE[return valid_rows, errors, imported count]
+```
+
+The parser is a pure utility. The service adds the database-existence check, sorts errors by row number, and only writes when `confirm` is true. Invalid rows never block valid rows from importing.
+
+## 8. Frontend session gate
+
+```mermaid
+stateDiagram-v2
+    [*] --> CheckToken
+    CheckToken --> Login: no token and path is /dashboard
+    CheckToken --> PublicShell: no token and public page
+    CheckToken --> VerifySession: token exists
+
+    VerifySession --> Login: GET /api/auth/session fails
+    VerifySession --> RedirectToDashboard: valid token on /login or /register
+    VerifySession --> AppPage: valid token
+
+    PublicShell --> Login: user submits login
+    Login --> AppPage: token stored
+    AppPage --> Login: logout clears token
+    RedirectToDashboard --> AppPage
+```
+
+The HTML pages are public shells. The server does not redirect unauthenticated HTML requests; it returns the page and the client JavaScript performs the gate. This avoids a redirect loop caused by browser navigation not carrying the bearer token. Actual data protection still happens on every API call through `require_auth`.
+
+## 9. Configuration and startup flow
+
+```mermaid
+flowchart TD
+    DOTENV[.env file] --> ENV[Process environment]
+    OSENV[Operating system environment] --> ENV
+    ENV --> CFG[server.config]
+
+    CFG --> URL[build_database_url]
+    URL --> URI[SQLALCHEMY_DATABASE_URI]
+    ENV --> JWTSEC[JWT_SECRET]
+    ENV --> JWTEXP[JWT_EXPIRATION_SECONDS]
+    ENV --> BCRYPT[BCRYPT_ROUNDS]
+    ENV --> CORS[CORS_ORIGINS]
+    ENV --> LOGLEVEL[LOG_LEVEL]
+
+    URI --> FACTORY[create_app]
+    JWTSEC --> FACTORY
+    JWTEXP --> FACTORY
+    BCRYPT --> FACTORY
+    CORS --> FACTORY
+    LOGLEVEL --> FACTORY
+
+    FACTORY --> EXT[Initialize SQLAlchemy]
+    FACTORY --> HANDLERS[Register error handlers and logger]
+    FACTORY --> BPS[Register API and page blueprints]
+    FACTORY --> GUARD[Register origin backstop and teardown]
+    EXT --> MYSQL[(MySQL)]
+    HANDLERS --> LOGFILE[logs/energy_audit.log]
+```
+
+`MYSQL_PORT` is omitted from the SQLAlchemy URI when the environment variable is empty. That keeps managed hosts such as PythonAnywhere from receiving `host:` with a blank port and raising `ValueError`. If `MYSQL_PORT` is set, it is appended as `host:port`.
+
+## 10. Key invariants
+
+- Identity always comes from the bearer token, never from a cookie, URL, or request body.
+- Every tenant-owned query is filtered by the token's `institution_id`.
+- Cross-tenant resources return 404, not 403.
+- Success responses use `status: "success"`; error responses use a numeric `status` equal to the HTTP status code.
+- Request bodies must be JSON objects. Non-JSON bodies and JSON arrays are rejected with 400.
+- Only the register-institution and login endpoints are public. Every other API endpoint requires a bearer token.
+- Roles are enforced with `require_role` on the server. Admin-only endpoints are user management and institution updates.
+- All database writes are committed once per request by the service layer.
+- Analysis functions are pure and unit-testable without a database.

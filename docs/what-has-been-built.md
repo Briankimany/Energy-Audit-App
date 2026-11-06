@@ -1,5 +1,7 @@
 # What has been built
 
+Related docs: [Architecture](architecture.md) · [API reference](api.md) · [Formulas](formulas.md)
+
 ## Phase 1 — Foundation & auth (complete)
 - Flask app factory (`create_app`) with config classes (dev/testing)
 - MySQL + Flask-SQLAlchemy with tenant-scoped models
@@ -32,7 +34,7 @@
 - Professional navy/teal/amber brand, light mode default, dark mode toggle (persisted)
 - Layout: topbar (64px) + sidebar (240px desktop) + content area
 - Pages: Login, Register, Dashboard, Buildings, Energy Records, Users, Settings, Compare
-- Dashboard: summary cards (total kWh, total cost, solar unavailable, CO₂ unavailable), teal bar chart of monthly series, anomaly alerts
+- Dashboard: page shell with `#dashboard-root`; client renderer expects total kWh/cost cards, a teal bar chart of `monthly_series`, and an anomaly list. Known gap: the current `dashboard.html` only exposes `#dashboard-root`, while `app.js` writes to `stat-kwh`, `stat-cost`, `consumptionChart`, and `anomaly-list`, so those elements must be added for the dashboard to render.
 - Buildings: add/edit/delete, view energy link
 - Users: add (admin only), list, delete
 - Settings: institution name/currency/max_buildings patch
@@ -44,7 +46,7 @@
 - **77 tests passing** (auth, error envelopes, roles, tenant isolation, limits, tenant isolation, energy import, analysis formulas, page rendering)
 
 ## Infrastructure
-- `create_database.py`: standalone DB bootstrap (reads `DATABASE_URL`/`MYSQL_*` env)
+- `create_database.py`: standalone DB bootstrap (reads `MYSQL_*` env via `build_database_url()`)
 - Alembic configured (`migrations/env.py` uses app's `build_database_url()`; `migrations/versions/` gitignored)
 - File-based logging (`logs/energy_audit.log` + console), level from `LOG_LEVEL` env (default DEBUG)
 - `.env.example`, `.gitignore`, `requirements.txt`, `run.py`, `PHASE_TRACK.md`, `README.md`
