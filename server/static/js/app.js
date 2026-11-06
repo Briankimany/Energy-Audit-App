@@ -18,7 +18,7 @@ function getTheme() {
   if (stored) {
     return stored;
   }
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  return "light";
 }
 
 function applyTheme(theme) {
@@ -26,7 +26,7 @@ function applyTheme(theme) {
   localStorage.setItem(THEME_KEY, theme);
   const btn = document.getElementById("theme-toggle");
   if (btn) {
-    btn.textContent = theme === "light" ? "🌙" : "☀️";
+    btn.textContent = theme === "light" ? "Dark mode" : "Light mode";
   }
 }
 
