@@ -5,4 +5,5 @@ bcrypt>=4.1
 mysql-connector-python>=8.4
 python-dotenv>=1.0
 Flask-CORS>=4.0
+alembic>=1.13
 pytest>=8.3
