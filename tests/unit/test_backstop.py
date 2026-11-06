@@ -9,6 +9,7 @@ def test_unknown_origin_is_refused(client):
 
 
 def test_allowed_origin_passes_backstop(client):
+    client.application.config["ALLOWED_ORIGINS"] = ["http://localhost:5173"]
     res = client.post(
         "/api/auth/login",
         json={"email": "a@b.co", "password": "password123"},
