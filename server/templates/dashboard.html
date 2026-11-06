@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard · Energy Audit{% endblock %}
+
+{% block content %}
+<section>
+  <h1 class="page-title">Dashboard</h1>
+  <p class="page-subtitle">Welcome to the {{ user.institution.name }} workspace.</p>
+
+  <div class="card">
+    <h2 class="card-title">Workspace</h2>
+    <p class="muted">Email: {{ user.email }}</p>
+    <p class="muted">Role: {{ user.role }}</p>
+    {% if user.must_change_password %}
+      <p class="muted">Your password must be changed at first login.</p>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

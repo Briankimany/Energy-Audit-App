@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}Create account · Energy Audit{% endblock %}
+
+{% block content %}
+<section class="auth-card">
+  <h1 class="auth-title">Create your institution</h1>
+  <p class="auth-subtitle">Start an energy audit workspace in under a minute.</p>
+
+  <form id="register-form" class="form" novalidate>
+    <div class="field">
+      <label class="field-label" for="institution_name">Institution name</label>
+      <input class="input" id="institution_name" name="institution_name" type="text" autocomplete="organization" required>
+    </div>
+    <div class="field">
+      <label class="field-label" for="admin_name">Your name</label>
+      <input class="input" id="admin_name" name="admin_name" type="text" autocomplete="name" required>
+    </div>
+    <div class="field">
+      <label class="field-label" for="admin_email">Admin email</label>
+      <input class="input" id="admin_email" name="admin_email" type="email" autocomplete="email" required>
+    </div>
+    <div class="field">
+      <label class="field-label" for="password">Password</label>
+      <input class="input" id="password" name="password" type="password" autocomplete="new-password" required>
+    </div>
+    <div id="form-error" class="form-error hidden"></div>
+    <button class="btn btn-primary" type="submit">Create institution</button>
+  </form>
+
+  <p class="auth-alt">Already registered? <a href="{{ url_for('pages.login') }}">Log in</a></p>
+</section>
+{% endblock %}

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Energy Audit{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="{{ url_for('pages.dashboard') }}">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"></path>
+        </svg>
+      </span>
+      <span class="brand-name">Energy Audit</span>
+    </a>
+    <div class="topbar-actions">
+      {% if user %}
+        <div class="topbar-user">
+          <span class="topbar-institution">{{ user.institution.name }}</span>
+          <span class="topbar-user-meta">{{ user.email }} &middot; {{ user.role }}</span>
+        </div>
+        <button type="button" class="btn btn-outline" id="logout-btn">Log out</button>
+      {% endif %}
+    </div>
+  </header>
+
+  <div class="shell">
+    <aside class="sidebar">
+      <nav class="nav">
+        <a class="nav-item{% if request.endpoint == 'pages.dashboard' %} active{% endif %}" href="{{ url_for('pages.dashboard') }}">Dashboard</a>
+      </nav>
+    </aside>
+    <main class="content">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

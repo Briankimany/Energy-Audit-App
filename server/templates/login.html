@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block title %}Log in · Energy Audit{% endblock %}
+
+{% block content %}
+<section class="auth-card">
+  <h1 class="auth-title">Welcome back</h1>
+  <p class="auth-subtitle">Log in to your energy audit workspace.</p>
+
+  <form id="login-form" class="form" novalidate>
+    <div class="field">
+      <label class="field-label" for="email">Email</label>
+      <input class="input" id="email" name="email" type="email" autocomplete="email" required>
+    </div>
+    <div class="field">
+      <label class="field-label" for="password">Password</label>
+      <input class="input" id="password" name="password" type="password" autocomplete="current-password" required>
+    </div>
+    <div id="form-error" class="form-error hidden"></div>
+    <button class="btn btn-primary" type="submit">Log in</button>
+  </form>
+
+  <p class="auth-alt">New institution? <a href="{{ url_for('pages.register') }}">Create one</a></p>
+</section>
+{% endblock %}
