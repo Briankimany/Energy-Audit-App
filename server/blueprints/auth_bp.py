@@ -35,3 +35,20 @@ def change_password():
     payload = auth_schema.validate_change_password_payload()
     auth_service.change_password(g.current_user.id, payload)
     return success_response("Password changed")
+
+
+@bp.get("/session")
+@require_auth
+def session():
+    user = g.current_user
+    return success_response(
+        "Session",
+        {
+            "user": {
+                "id": user.id,
+                "institution_id": user.institution_id,
+                "role": user.role,
+                "must_change_password": user.must_change_password,
+            }
+        },
+    )

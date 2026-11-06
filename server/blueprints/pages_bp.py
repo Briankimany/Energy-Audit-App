@@ -17,14 +17,16 @@ def _current_user():
 
 @bp.get("/login")
 def login():
-    if _current_user() is not None:
+    user = _current_user()
+    if user is not None:
         return redirect("/dashboard")
     return render_template("login.html")
 
 
 @bp.get("/register")
 def register():
-    if _current_user() is not None:
+    user = _current_user()
+    if user is not None:
         return redirect("/dashboard")
     return render_template("register.html")
 
@@ -32,6 +34,4 @@ def register():
 @bp.get("/dashboard")
 def dashboard():
     user = _current_user()
-    if user is None:
-        return redirect("/login")
     return render_template("dashboard.html", user=user)
