@@ -1,4 +1,5 @@
 const TOKEN_KEY = "energy_audit_token";
+const THEME_KEY = "energy_audit_theme";
 
 function getToken() {
   return localStorage.getItem(TOKEN_KEY);
@@ -12,6 +13,46 @@ function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
 }
 
+function getTheme() {
+  const stored = localStorage.getItem(THEME_KEY);
+  if (stored) {
+    return stored;
+  }
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  localStorage.setItem(THEME_KEY, theme);
+  const btn = document.getElementById("theme-toggle");
+  if (btn) {
+    btn.textContent = theme === "light" ? "🌙" : "☀️";
+  }
+}
+
+function toggleTheme() {
+  applyTheme(document.documentElement.dataset.theme === "light" ? "dark" : "light");
+}
+
+async function apiGet(url, token) {
+  const headers = {};
+  if (token) {
+    headers.Authorization = "Bearer " + token;
+  }
+  const response = await fetch(url, { method: "GET", headers });
+  const body = await response.json().catch(() => ({}));
+  return { response, body };
+}
+
+async function apiSession() {
+  const token = getToken();
+  const { response, body } = await apiGet("/api/auth/session", token);
+  if (!response.ok) {
+    return null;
+  }
+  return body.data && body.data.user ? body.data.user : null;
+}
+
 async function apiLogout() {
   const token = getToken();
   if (token) {
@@ -20,7 +61,7 @@ async function apiLogout() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+          Authorization: "Bearer " + token,
         },
         body: "{}",
       });
@@ -32,57 +73,10 @@ async function apiLogout() {
   window.location.href = "/login";
 }
 
-async function apiGet(url, token) {
-  const headers = {};
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
-  const response = await fetch(url, {
-    method: "GET",
-    headers,
-  });
-  const body = await response.json().catch(() => ({}));
-  return { response, body };
-}
-
-async function apiSession() {
-  const token = getToken();
-  const { response, body } = await apiGet("/api/auth/session", token);
-  if (!response.ok) {
-    return null;
-  }
-  const user = body.data && body.data.user ? body.data.user : null;
-  return user;
-}
-
-async function apiDashboard() {
-  const token = getToken();
-  const { response, body } = await apiGet("/api/dashboard", token);
-  if (!response.ok) {
-    return null;
-  }
-  return body.data ? body.data : null;
-}
-
-function renderDashboard(user) {
-  const mount = document.getElementById("dashboard-root");
-  if (!mount) {
-    return;
-  }
-  const institutionName = user && user.institution_name ? user.institution_name : "your institution";
-  mount.innerHTML = `
-    <section class="card">
-      <h1 class="page-title">Dashboard</h1>
-      <p class="page-subtitle">Welcome to the ${institutionName} workspace.</p>
-      <p class="muted">Signed in as ${user ? user.email : ""} (${user ? user.role : ""}).</p>
-    </section>
-  `;
-}
-
 async function postJson(url, payload, token) {
   const headers = { "Content-Type": "application/json" };
   if (token) {
-    headers.Authorization = `Bearer ${token}`;
+    headers.Authorization = "Bearer " + token;
   }
   const response = await fetch(url, {
     method: "POST",
@@ -112,6 +106,12 @@ function hideFormError() {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
+  const themeToggle = document.getElementById("theme-toggle");
+  if (themeToggle) {
+    applyTheme(getTheme());
+    themeToggle.addEventListener("click", toggleTheme);
+  }
+
   const logoutBtn = document.getElementById("logout-btn");
   if (logoutBtn) {
     logoutBtn.addEventListener("click", apiLogout);
@@ -165,8 +165,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (path === "/login" || path === "/register") {
         window.location.href = "/dashboard";
       } else if (path === "/dashboard") {
-        await apiDashboard();
-        renderDashboard(user);
+        const data = await apiDashboard();
+        if (data) {
+          const instRes = await apiGet("/api/institution", token);
+          const currency = instRes.data && instRes.data.currency ? instRes.data.currency : "";
+          renderDashboardData(data, user, currency);
+        }
       }
     } else {
       clearToken();
@@ -176,3 +180,84 @@ document.addEventListener("DOMContentLoaded", async () => {
     window.location.href = "/login";
   }
 });
+
+async function apiDashboard() {
+  const token = getToken();
+  const { response, body } = await apiGet("/api/dashboard", token);
+  if (!response.ok) {
+    return null;
+  }
+  return body.data ? body.data : null;
+}
+
+function formatCurrency(value, currency) {
+  if (value == null) {
+    return "—";
+  }
+  const sym = currency === "KES" ? "KES " : currency === "USD" ? "$" : currency + " ";
+  return sym + Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function renderDashboardData(data, user, currency) {
+  document.getElementById("updated-at").textContent = new Date().toLocaleDateString();
+
+  const kwhEl = document.getElementById("stat-kwh");
+  const costEl = document.getElementById("stat-cost");
+  if (kwhEl) {
+    kwhEl.textContent = ((data.total_kwh || 0) / 1).toLocaleString(undefined, {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    }) + " kWh";
+  }
+  if (costEl) {
+    costEl.textContent = formatCurrency(data.total_cost || 0, currency);
+  }
+
+  const anomalies = data.anomalies || [];
+  const anomalyList = document.getElementById("anomaly-list");
+  if (anomalyList) {
+    if (anomalies.length === 0) {
+      anomalyList.innerHTML = "<p class=\"muted\">No anomalies detected.</p>";
+    } else {
+      anomalyList.innerHTML = anomalies
+        .map(
+          (a) =>
+            "<div class=\"anomaly-row\"><span class=\"anomaly-month\">" +
+            (a.month || "") +
+            "</span><span class=\"anomaly-value\">+" +
+            (a.percent_above || 0).toFixed(0) +
+            "%</span></div>"
+        )
+        .join("");
+    }
+  }
+
+  const series = data.monthly_series || [];
+  const ctx = document.getElementById("consumptionChart");
+  if (ctx && series.length) {
+    new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels: series.map((s) => s.month.slice(0, 7)),
+        datasets: [
+          {
+            label: "kWh",
+            data: series.map((s) => s.kwh),
+            backgroundColor: "#168C83",
+            borderWidth: 0,
+            barPercentage: 0.6,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { beginAtZero: true, grid: { color: "#e3e8ef" }, ticks: { color: "#6b7a8d" } },
+          x: { grid: { display: false }, ticks: { color: "#6b7a8d" } },
+        },
+      },
+    });
+  }
+}

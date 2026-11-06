@@ -3,20 +3,25 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Energy Audit{% endblock %}</title>
+  <title>{% block title %}Energy Monitor{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@2.9.4/dist/Chart.min.js"></script>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
   <header class="topbar">
     <a class="brand" href="{{ url_for('pages.dashboard') }}">
       <span class="brand-mark" aria-hidden="true">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"></path>
         </svg>
       </span>
-      <span class="brand-name">Energy Audit</span>
+      <span class="brand-name">Energy Monitor</span>
     </a>
     <div class="topbar-actions">
+      <button type="button" class="btn btn-icon" id="theme-toggle" aria-label="Toggle dark mode"></button>
       {% if user %}
         <div class="topbar-user">
           <span class="topbar-institution">{{ user.institution.name }}</span>
@@ -30,7 +35,23 @@
   <div class="shell">
     <aside class="sidebar">
       <nav class="nav">
-        <a class="nav-item{% if request.endpoint == 'pages.dashboard' %} active{% endif %}" href="{{ url_for('pages.dashboard') }}">Dashboard</a>
+        {% block sidebar %}
+        <div class="nav-group">
+          <p class="nav-section">Overview</p>
+          <a class="nav-item active" href="{{ url_for('pages.dashboard') }}">Dashboard</a>
+        </div>
+        <div class="nav-group">
+          <p class="nav-section">Monitoring</p>
+          <a class="nav-item" href="#">Energy</a>
+          <a class="nav-item" href="#">Appliances</a>
+          <a class="nav-item" href="#">Solar &amp; Battery</a>
+          <a class="nav-item" href="#">Indoor Air</a>
+        </div>
+        <div class="nav-group">
+          <p class="nav-section">Information</p>
+          <a class="nav-item" href="#">About</a>
+        </div>
+        {% endblock %}
       </nav>
     </aside>
     <main class="content">

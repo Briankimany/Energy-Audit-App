@@ -1,9 +1,21 @@
 {% extends "base.html" %}
 
-{% block title %}Dashboard · Energy Audit{% endblock %}
+{% block title %}Dashboard · Energy Monitor{% endblock %}
 
 {% block content %}
 <section>
+  <div class="page-head">
+    <h1 class="page-title">Dashboard</h1>
+    {% if user %}
+      <p class="page-subtitle">{{ user.institution.name }} · {{ user.email }}</p>
+    {% else %}
+      <p class="page-subtitle">Please log in.</p>
+    {% endif %}
+    <p class="muted small">Last updated: <span id="updated-at">--</span></p>
+  </div>
+
   <div id="dashboard-root"></div>
 </section>
 {% endblock %}
+
+

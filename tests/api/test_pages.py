@@ -1,7 +1,7 @@
 def test_login_page_renders(client):
     response = client.get("/login")
     assert response.status_code == 200
-    assert b"Energy Audit" in response.data
+    assert b"Energy Monitor" in response.data
 
 
 def test_register_page_renders(client):
