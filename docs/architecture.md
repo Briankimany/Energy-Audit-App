@@ -12,7 +12,7 @@ flowchart LR
     U -->|JSON over HTTPS| A[Flask API blueprints]
     P --> APP[Flask application]
     A --> APP
-    APP --> DB[(MySQL)]
+    APP --> DB["MySQL database"]
     APP --> LOG[Rotating log file]
     U -.->|loads assets| CDN[Chart.js and Inter font CDN]
     ENV[Environment variables or .env] --> APP
@@ -281,20 +281,17 @@ The parser is a pure utility. The service adds the database-existence check, sor
 ## 8. Frontend session gate
 
 ```mermaid
-stateDiagram-v2
-    [*] --> CheckToken
-    CheckToken --> Login: no token and path is /dashboard
-    CheckToken --> PublicShell: no token and public page
-    CheckToken --> VerifySession: token exists
-
-    VerifySession --> Login: GET /api/auth/session fails
-    VerifySession --> RedirectToDashboard: valid token on /login or /register
-    VerifySession --> AppPage: valid token
-
-    PublicShell --> Login: user submits login
-    Login --> AppPage: token stored
-    AppPage --> Login: logout clears token
-    RedirectToDashboard --> AppPage
+flowchart TD
+    START([Page load]) --> TOKEN{"Token in localStorage?"}
+    TOKEN -->|"no, dashboard page"| LOGIN["Redirect to login"]
+    TOKEN -->|"no, public page"| SHELL["Render public shell"]
+    TOKEN -->|"yes"| SESSION["Call session endpoint"]
+    SESSION -->|"fails"| CLEAR["Clear token and redirect to login"]
+    SESSION -->|"valid on auth page"| DASH["Redirect to dashboard"]
+    SESSION -->|"valid on app page"| APP["Render app page"]
+    SHELL -->|"user submits login"| LOGIN
+    LOGIN -->|"token stored"| APP
+    APP -->|"logout"| CLEAR
 ```
 
 The HTML pages are public shells. The server does not redirect unauthenticated HTML requests; it returns the page and the client JavaScript performs the gate. This avoids a redirect loop caused by browser navigation not carrying the bearer token. Actual data protection still happens on every API call through `require_auth`.
@@ -303,31 +300,31 @@ The HTML pages are public shells. The server does not redirect unauthenticated H
 
 ```mermaid
 flowchart TD
-    DOTENV[.env file] --> ENV[Process environment]
-    OSENV[Operating system environment] --> ENV
-    ENV --> CFG[server.config]
+    DOTENV[".env file"] --> ENV["Process environment"]
+    OSENV["Operating system environment"] --> ENV
+    ENV --> CFG["server.config"]
 
-    CFG --> URL[build_database_url]
-    URL --> URI[SQLALCHEMY_DATABASE_URI]
-    ENV --> JWTSEC[JWT_SECRET]
-    ENV --> JWTEXP[JWT_EXPIRATION_SECONDS]
-    ENV --> BCRYPT[BCRYPT_ROUNDS]
-    ENV --> CORS[CORS_ORIGINS]
-    ENV --> LOGLEVEL[LOG_LEVEL]
+    CFG --> URL["build_database_url"]
+    URL --> URI["SQLALCHEMY_DATABASE_URI"]
+    ENV --> JWTSEC["JWT_SECRET"]
+    ENV --> JWTEXP["JWT_EXPIRATION_SECONDS"]
+    ENV --> BCRYPT["BCRYPT_ROUNDS"]
+    ENV --> CORS["CORS_ORIGINS"]
+    ENV --> LOGLEVEL["LOG_LEVEL"]
 
-    URI --> FACTORY[create_app]
+    URI --> FACTORY["create_app"]
     JWTSEC --> FACTORY
     JWTEXP --> FACTORY
     BCRYPT --> FACTORY
     CORS --> FACTORY
     LOGLEVEL --> FACTORY
 
-    FACTORY --> EXT[Initialize SQLAlchemy]
-    FACTORY --> HANDLERS[Register error handlers and logger]
-    FACTORY --> BPS[Register API and page blueprints]
-    FACTORY --> GUARD[Register origin backstop and teardown]
-    EXT --> MYSQL[(MySQL)]
-    HANDLERS --> LOGFILE[logs/energy_audit.log]
+    FACTORY --> EXT["Initialize SQLAlchemy"]
+    FACTORY --> HANDLERS["Register error handlers and logger"]
+    FACTORY --> BPS["Register API and page blueprints"]
+    FACTORY --> GUARD["Register origin backstop and teardown"]
+    EXT --> MYSQL["MySQL database"]
+    HANDLERS --> LOGFILE["logs/energy_audit.log"]
 ```
 
 `MYSQL_PORT` is omitted from the SQLAlchemy URI when the environment variable is empty. That keeps managed hosts such as PythonAnywhere from receiving `host:` with a blank port and raising `ValueError`. If `MYSQL_PORT` is set, it is appended as `host:port`.
