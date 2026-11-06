@@ -8,7 +8,7 @@
 
 ## Local Setup
 
-1. Create a MySQL database (for example `energy_audit`).
+1. Create the MySQL database: `"venv\Scripts\python.exe" create_database.py` (reads `DATABASE_URL` from `.env`).
 2. `pip install -r requirements.txt`
 3. Copy `.env.example` to `.env` and set `DATABASE_URL` and `JWT_SECRET`.
 4. Create tables: `python -c "from server import create_app, extensions; app = create_app(); app.app_context().push(); extensions.db.create_all()"`
