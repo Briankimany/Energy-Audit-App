@@ -1,114 +1,209 @@
-# Architecture — Energy Audit App
+# Architecture — Information Flow
 
-## Overview
-Server-rendered multi-institution Energy Audit App using Python/Flask, MySQL, Jinja2 templates, vanilla JS (no SPA), plain CSS, and Chart.js. Tenant isolation is handled at the application layer (no PostgreSQL RLS).
+This document describes how a request travels through the app, from HTTP wire to database and back. It is **not** a file listing.
 
-## Stack
-| Layer | Tech |
-|-------|------|
-| Language | Python 3.13 |
-| Web framework | Flask |
-| ORM | Flask-SQLAlchemy |
-| Database | MySQL (via `mysql-connector-python`) |
-| Auth | PyJWT (Bearer), bcrypt |
-| Frontend | Jinja2 server-rendered templates, vanilla JS (ES modules), plain CSS, Chart.js (CDN) |
-| PDF | WeasyPrint |
-| Testing | pytest |
-| Migrations | Alembic |
-| Env config | python-dotenv |
+## Core request lifecycle (every request)
 
-## Directory layout
 ```
-server/
-  __init__.py          # Flask app factory (create_app)
-  config.py            # Env config, build_database_url(), Logging config
-  extensions.py        # SQLAlchemy db instance
-  errors.py            # ApiError hierarchy + error handlers
-  responses.py         # success_response / error_response envelopes
-  logging.py           # File + console logging (LOG_LEVEL env, default DEBUG)
-  decorators.py        # require_auth, require_role
-  models/
-    __init__.py        # db + model exports
-    institution.py     # Institution model
-    user.py            # User model (admin / auditor)
-    building.py        # Building model
-    energy_record.py   # Energy record model
-  repositories/
-    __init__.py
-    building_repo.py
-    institution_repo.py
-    user_repo.py
-    energy_repo.py
-  services/
-    __init__.py
-    auth_service.py    # Register, login, logout, change-password, session, JWT
-    institution_service.py
-    users_service.py
-    buildings_service.py
-    energy_service.py
-    dashboard_service.py
-    analysis.py        # Pure calculation functions (totals, EUI, anomaly, compare)
-  schemas/
-    auth_schema.py
-    building_schema.py
-    energy_schema.py
-    institution_schema.py
-    user_schema.py
-  utils/
-    validators.py
-    security.py        # bcrypt hash/verify
-    dates.py           # month parsing
-    csv.py             # CSV parsing
-  blueprints/
-    __init__.py        # blueprints list
-    auth_bp.py         # /api/auth routes
-    institution_bp.py  # /api/institution
-    users_bp.py        # /api/users
-    buildings_bp.py    # /api/buildings
-    energy_bp.py       # /api/buildings/:id/energy (+ import)
-    analysis_bp.py     # /api/analysis (+ compare, dashboard)
-    pages_bp.py        # server-rendered HTML routes
-tests/
-  api/
-  unit/
-migrations/            # Alembic
-server/templates/      # Jinja2 HTML templates
-server/static/css/     # Styles (light/dark via CSS variables)
-server/static/js/      # Vanilla JS (auth, charts)
-create_database.py     # Standalone bootstrap (creates MySQL DB)
+Browser / curl
+     │
+     ▼
+create_app()  (server/__init__.py)
+     │
+     ├─ extensions.db.init_app(app)          # bind SQLAlchemy
+     ├─ errors.register_error_handlers(app)  # ApiError → JSON envelopes
+     ├─ logging.register_error_logger(app)   # file + console, LOG_LEVEL env
+     ├─ register all blueprints              # one blueprint per domain
+     └─ before_request: enforce_origin()     # CORS origin backstop
+     │
+     ▼
+Route matched → Blueprint handler
+     │
+     ├─ require_auth decorator               # Bearer token → g.current_user
+     │     ├─ read Authorization header
+     │     ├─ decode JWT (sub=user id, institution_id, role)
+     │     ├─ UserRepository().find_by_id(sub)
+     │     └─ store user on Flask g (request-local)
+     │
+     └─ Schema validation (if body)          # required fields, types, ranges
+           │
+           ▼
+Service layer (business rules)
+     │
+     ├─ Repository queries                     # tenant-scoped SQL
+     │     └─ WHERE institution_id = g.current_user.institution_id
+     │           AND ... (building_id, etc.)
+     │
+     └─ Return plain dict / model
+           │
+           ▼
+Blueprint returns success_response(...) or raises ApiError
+     │
+     ├─ success → {status:"success", message, data}
+     ├─ ApiError  → {status, message, errors} with exc.status_code
+     └─ unexpected → 500 {status:500, message:"internal server error"}
+     │
+     ▼
+Flask returns JSON to client
+     │
+     ▼
+extensions.db.session.remove()  (teardown_appcontext)
 ```
 
-## Design principles
-- **One blueprint per domain**, registered via a single `blueprints` list in `blueprints/__init__.py`.
-- **One module = one concern.**
-- **Two error branches:** boundary/request errors (`ValidationError`) vs business-rule errors (`BusinessError`), rooted in `ApiError`.
-- **Response envelopes:** success `{status, message, data[, meta]}`, error `{status, message, errors}`.
-- **JSON-object bodies only.** No defaulting on non-object bodies.
-- **Identity from `Authorization: Bearer` header only.** No cookies.
-- **Tenant isolation:** every child table has `institution_id` + composite FK `(institution_id, building_id)` → `buildings(institution_id, id)`. Institution ID comes from the JWT, never from URL/body.
-- **Commit once per request**, session removed on teardown.
-- **Named loggers**, file + console output, level from `LOG_LEVEL` env (default DEBUG).
+## Auth flow (login → authenticated requests)
 
-## Database relationships
 ```
-institutions (id PK, name, currency, max_buildings, created_at)
-    └── users (id PK, institution_id FK, name, email, role, password_hash, must_change_password)
-    └── buildings (id PK, institution_id FK, name, type, floor_area_m2, operating_hours)
-        └── energy_records (id PK, institution_id, building_id FK composite, month, kwh, cost)
+1. POST /auth/register-institution
+   Body: {institution_name, admin_name, admin_email, password}
+   Service: Institution + User(admin) created in ONE transaction.
+            Password hashed with bcrypt, must_change_password=True.
+   Returns: access_token (JWT), institution_id, user_id.
+
+2. POST /auth/login
+   Body: {email, password}
+   Service: find user by email, verify bcrypt, issue JWT:
+            sub=user.id, institution_id, role, iat, exp.
+   Returns: access_token.
+
+3. Every subsequent request:
+   Client sends: Authorization: Bearer <access_token>
+   require_auth:
+     - decode JWT → payload.sub, payload.institution_id, payload.role
+     - UserRepository().find_by_id(sub) → g.current_user
+     - All repository queries for this request are scoped to
+       g.current_user.institution_id.
+   If token missing/invalid → 401 UnauthorizedError.
 ```
 
-## Environment variables
-| Var | Default | Purpose |
-|-----|---------|---------|
-| `DATABASE_URL` | built from `MYSQL_*` | Full SQLAlchemy DB URI (alternative to `MYSQL_*`) |
-| `MYSQL_HOST` | `127.0.0.1` | MySQL host |
-| `MYSQL_PORT` | `3306` | MySQL port (empty = omit port) |
-| `MYSQL_USER` | `root` | MySQL user |
-| `MYSQL_PASSWORD` | `root` | MySQL password |
-| `MYSQL_DATABASE` | `energy_audit` | Database name |
-| `JWT_SECRET` | dev default | JWT signing secret |
-| `LOG_LEVEL` | `DEBUG` | Logging level |
-| `CORS_ORIGINS` | (empty) | Allowed origins (empty = none) |
+## Tenant isolation flow (the "one institution" rule)
 
-## Bootstrap script
-`create_database.py` — reads `DATABASE_URL` (or `MYSQL_*` vars), connects to MySQL, and runs `CREATE DATABASE IF NOT EXISTS`. Run once before `create_all()`.
+Every child table has `institution_id` and a **composite foreign key**:
+
+```
+buildings.institution_id references institutions.id
+energy_records.(institution_id, building_id) references buildings.(institution_id, id)
+```
+
+Flow for any data request (e.g., `GET /buildings/5/energy`):
+
+```
+1. require_auth → g.current_user (institution_id = 42)
+2. buildings_service.list_records(user, building_id=5)
+   → EnergyRepository().list_for_building(
+       institution_id=42, building_id=5
+     )
+   → SQL: WHERE institution_id = 42 AND building_id = 5
+3. If no row matches → NotFoundError → 404 (cross-tenant looks like "not exist")
+```
+
+Result: Institution A can never see Institution B's buildings/records/users because every query is filtered by `institution_id` from the JWT, and the URL/body never supplies the institution.
+
+## Energy record flow
+
+```
+POST /buildings/:id/energy
+Body: {month, kwh, cost}
+│
+├─ require_auth (user from JWT)
+├─ energy_schema: month YYYY-MM, kwh >= 0, cost >= 0
+├─ service: building belongs to user's institution?
+├─ service: month not already recorded for this building?
+│   → duplicate → 409 BusinessError
+├─ repo: INSERT energy_records (institution_id, building_id, month, kwh, cost)
+│   → commit once
+└─ return created record
+```
+
+## CSV import flow (validate-then-confirm)
+
+```
+POST /buildings/:id/energy/import
+Body: {csv: "month,kwh,cost\n...", confirm: false|true}
+
+1. validate_import_payload: csv is string, confirm is boolean
+2. parse_energy_csv(text) — pure function, no DB:
+   - header must be exactly month,kwh,cost
+   - each row: month YYYY-MM, kwh >= 0 number, cost >= 0 number
+   - duplicate months within file flagged
+   - returns (parsed_rows, errors with row numbers)
+3. If confirm == false:
+     return {valid_rows, errors, imported: 0, requires_confirmation: true}
+     (NOTHING is written to DB)
+4. If confirm == true:
+     for each parsed row:
+       - month already recorded for this building? → error, skip
+       - else repo.create(...)
+     commit once
+     return {valid_rows, errors, imported: N}
+```
+
+## Analysis / dashboard flow
+
+```
+GET /buildings/:id/analysis
+│
+├─ require_auth
+├─ dashboard_service.analyze_building(user, building_id)
+│   ├─ repo: building belongs to institution?
+│   ├─ repo: all energy records for this building
+│   ├─ analysis.annual_kwh(records)   = sum kwh
+│   ├─ analysis.annual_cost(records)  = sum cost
+│   ├─ analysis.eui(total_kwh, floor_area)   = None if <12 months
+│   ├─ analysis.anomaly_months(records)      = month >30% above avg of others
+│   └─ return dict
+└─ return JSON with totals, EUI, note (complete/partial/insufficient), anomalies
+
+GET /analysis/compare
+│
+├─ for each building in institution:
+│   ├─ annual kWh/cost, EUI
+│   └─ collect building types
+├─ analysis.compare_buildings(analyses, types)
+│   └─ warning if >1 distinct building type
+└─ return {comparisons, warning}
+
+GET /dashboard
+│
+├─ for each building: total kWh, total cost (ALL buildings, even incomplete)
+├─ monthly_series aggregated across buildings by month
+├─ comparisons (only buildings with complete EUI)
+├─ anomalies collected across all buildings
+└─ return {building_count, total_kwh, total_cost, monthly_series, comparisons, warning, anomalies}
+```
+
+## Response envelopes
+
+Success (from `responses.success_response`):
+```json
+{ "status": "success", "message": "...", "data": { ... }, "meta": null }
+```
+
+Error (from `server/errors.py` handlers):
+```json
+{ "status": 400, "message": "...", "errors": { "field": ["reason"] } }
+```
+
+Unexpected exception → 500 `{ "status": 500, "message": "internal server error", "errors": {} }`, logged via `app.logger.exception`.
+
+## Configuration flow
+
+```
+Environment variables (or .env)
+     │
+     ├─ MYSQL_HOST/PORT/USER/PASSWORD/DATABASE
+     │     └─ build_database_url() → SQLALCHEMY_DATABASE_URI
+     │           (port omitted if MYSQL_PORT empty → PythonAnywhere safe)
+     ├─ JWT_SECRET, JWT_EXPIRATION_SECONDS, BCRYPT_ROUNDS
+     ├─ CORS_ORIGINS (empty = none allowed)
+     ├─ LOG_LEVEL (default DEBUG) → logging.py
+     └─ DATABASE_URL (override for full URL, bypasses MYSQL_*)
+           │
+           ▼
+create_app(config_object) loads the class, builds the URL,
+initializes extensions, registers blueprints and handlers.
+```
+
+## What is NOT built yet (phases 5–7)
+- Equipment CRUD, reconciliation gap %, simple payback
+- Findings & recommendations (library measures, payback)
+- Reports, PDF (WeasyPrint), export, seed script, final validation
