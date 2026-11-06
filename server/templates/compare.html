@@ -10,6 +10,10 @@
   <div class="card">
     <div id="compare-loading">Loading&hellip;</div>
     <div id="compare-warning" style="margin-bottom:16px; display:none;"></div>
+    <div class="chart-wrap" style="margin-bottom:20px;">
+      <canvas id="compareChart"></canvas>
+    </div>
+    <p class="muted small" id="compare-chart-empty" style="display:none;">No EUI data available yet. Add at least one month of energy records to each building.</p>
     <table class="data-table" id="compare-table" style="display:none;">
       <thead>
         <tr>
@@ -28,7 +32,21 @@
 const token = localStorage.getItem("energy_audit_token");
 const headers = token ? { Authorization: "Bearer " + token } : {};
 
+let currency = "";
+let compareChart = null;
+
 function esc(t){ return String(t).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[c])); }
+
+function money(value){
+  if(typeof formatCurrency === "function"){ return formatCurrency(value, currency); }
+  return String(value);
+}
+
+async function loadCurrency(){
+  const res = await fetch("/api/institution", { headers });
+  const body = await res.json();
+  currency = body.data && body.data.currency ? body.data.currency : "";
+}
 
 async function loadCompare(){
   const res = await fetch("/api/analysis/compare", { headers });
@@ -38,25 +56,77 @@ async function loadCompare(){
   const tbody = document.getElementById("compare-tbody");
   const empty = document.getElementById("compare-empty");
   const warning = document.getElementById("compare-warning");
+  const chartEmpty = document.getElementById("compare-chart-empty");
   const data = body.data || {};
-  const comparisons = data.comparisons || [];
+  const comparisons = (data.comparisons || []).slice().sort((a, b) => {
+    const left = a.eui == null ? Number.POSITIVE_INFINITY : a.eui;
+    const right = b.eui == null ? Number.POSITIVE_INFINITY : b.eui;
+    return left - right;
+  });
   loading.style.display = "none";
-  if(comparisons.length === 0){ empty.style.display = "block"; return; }
+
+  if(comparisons.length === 0){
+    empty.style.display = "block";
+    chartEmpty.style.display = "block";
+    return;
+  }
+
   table.style.display = "table";
-  if(data.warning){ warning.style.display = "block"; warning.textContent = data.warning; warning.style.color = "var(--color-amber)"; }
-  tbody.innerHTML = comparisons.map(c => `
-    <tr>
-      <td>${esc(c.name)}</td>
-      <td>${esc(c.type)}</td>
-      <td>${Number(c.floor_area_m2||0).toLocaleString()}</td>
-      <td>${Number(c.total_kwh||0).toLocaleString(undefined,{minimumFractionDigits:1})}</td>
-      <td>${Number(c.total_cost||0).toLocaleString(undefined,{minimumFractionDigits:2})}</td>
-      <td>${c.eui == null ? "Incomplete" : Number(c.eui).toFixed(2)}</td>
-      <td>${c.eui_note}</td>
-    </tr>
-  `).join("");
+  if(data.warning){
+    warning.style.display = "block";
+    warning.textContent = data.warning;
+    warning.style.color = "var(--color-amber)";
+  }
+
+  tbody.innerHTML = comparisons.map(c => {
+    const note = c.eui_note || "insufficient";
+    return `
+      <tr>
+        <td>${esc(c.name)}</td>
+        <td>${esc(c.type)}</td>
+        <td>${Number(c.floor_area_m2||0).toLocaleString()}</td>
+        <td>${Number(c.total_kwh||0).toLocaleString(undefined,{minimumFractionDigits:1})}</td>
+        <td>${money(c.total_cost||0)}</td>
+        <td>${c.eui == null ? "—" : Number(c.eui).toFixed(2)}</td>
+        <td><span class="badge badge-${esc(note)}">${esc(note)}</span></td>
+      </tr>`;
+  }).join("");
+
+  const ctx = document.getElementById("compareChart");
+  const hasEui = comparisons.some(c => c.eui != null);
+  chartEmpty.style.display = hasEui ? "none" : "block";
+  if(compareChart){ compareChart.destroy(); compareChart = null; }
+
+  if(ctx && hasEui){
+    const colors = typeof chartColors === "function" ? chartColors() : { grid: "#e3e8ef", text: "#6b7a8d" };
+    compareChart = new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels: comparisons.map(c => c.name),
+        datasets: [{
+          label: "EUI (kWh/m²)",
+          data: comparisons.map(c => c.eui == null ? 0 : c.eui),
+          backgroundColor: "#168C83",
+          borderWidth: 0,
+          barPercentage: 0.55,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { beginAtZero: true, grid: { color: colors.grid }, ticks: { color: colors.text } },
+          x: { grid: { display: false }, ticks: { color: colors.text } },
+        },
+      },
+    });
+  }
 }
 
-loadCompare();
+(async function init(){
+  await loadCurrency();
+  await loadCompare();
+})();
 </script>
 {% endblock %}

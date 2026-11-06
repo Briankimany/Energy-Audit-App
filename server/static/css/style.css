@@ -315,6 +315,49 @@ a {
   height: 240px;
 }
 
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 1.7fr 1fr;
+  gap: 20px;
+}
+
+@media (max-width: 900px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.btn-sm {
+  padding: 5px 10px;
+  font-size: 13px;
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #eef3f8;
+  color: var(--color-navy);
+  text-transform: capitalize;
+}
+
+.badge-complete {
+  background: #e6f5f2;
+  color: #0f6b63;
+}
+
+.badge-partial {
+  background: #fdf3e3;
+  color: #8a5a00;
+}
+
+.badge-insufficient {
+  background: #fdecec;
+  color: #a02c2c;
+}
+
 .anomaly-row {
   display: flex;
   justify-content: space-between;

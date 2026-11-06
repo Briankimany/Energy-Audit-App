@@ -285,13 +285,14 @@ Response `200`:
     "id": 1,
     "name": "Acme Corp",
     "currency": "KES",
+    "standard_cost_per_kwh": 21.84,
     "max_buildings": 5,
     "created_at": "2026-01-15T09:30:00+00:00"
   }
 }
 ```
 
-`currency` is a three-letter uppercase code. It controls how the frontend should format cost values.
+`currency` is a three-letter uppercase code. It controls how the frontend should format cost values. `standard_cost_per_kwh` is the institution's standard electricity rate used by the energy records UI to auto-calculate cost from kWh.
 
 ### 3.2 Update institution
 
@@ -304,6 +305,7 @@ Request:
 {
   "name": "Acme Holdings",
   "currency": "USD",
+  "standard_cost_per_kwh": 24.5,
   "max_buildings": 10
 }
 ```
@@ -317,6 +319,7 @@ Response `200`:
     "id": 1,
     "name": "Acme Holdings",
     "currency": "USD",
+    "standard_cost_per_kwh": 24.5,
     "max_buildings": 10,
     "created_at": "2026-01-15T09:30:00+00:00"
   }
@@ -329,6 +332,8 @@ Validation and business errors:
 |------|---------|--------|
 | 400 | name must be a non-empty string | `{"name": ["required"]}` |
 | 400 | currency must be a 3-letter code | `{"currency": ["must be a 3-letter code"]}` |
+| 400 | standard_cost_per_kwh must be a number | `{"standard_cost_per_kwh": ["must be a number"]}` |
+| 400 | standard_cost_per_kwh must not be negative | `{"standard_cost_per_kwh": ["must be greater than or equal to 0"]}` |
 | 400 | max_buildings must be an integer | `{"max_buildings": ["must be an integer"]}` |
 | 400 | max_buildings must be between 1 and 50 | `{"max_buildings": ["must be 1..50"]}` |
 | 403 | Forbidden | `{}` when the caller is an auditor |
@@ -1128,11 +1133,13 @@ Fetch `currency` from `GET /api/institution` and format cost values:
 
 | Currency | Display |
 |----------|---------|
-| `KES` | `KES 1,234.56` |
+| `KES` | `KSh 1,234.56` |
 | `USD` | `$1,234.56` |
 | anything else | `<CODE> 1,234.56` |
 
 Use two decimal places for money. Energy totals use one decimal place and the suffix `kWh`.
+
+The energy records page also fetches `standard_cost_per_kwh` from `GET /api/institution`. If the user leaves the cost field blank, calculate `kwh * standard_cost_per_kwh` and submit that value as `cost`. Keep an editable cost field so actual bills can override the standard rate. CSV imports still require a cost column.
 
 ### 9.6 Dashboard rendering
 

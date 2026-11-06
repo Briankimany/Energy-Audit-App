@@ -150,6 +150,8 @@ Two database constraints enforce the same rule structurally:
 
 The scope always comes from the JWT. URL parameters and request bodies never supply `institution_id`. Cross-tenant access therefore looks identical to a missing row: the server returns 404 rather than revealing that the row exists elsewhere.
 
+There is no platform-level super-admin in this design. Every admin is scoped to one institution. A future central super-admin would need a separate platform identity and role outside institution tenancy; see [What has been built](what-has-been-built.md#future-enhancement--centralized-platform-super-admin-not-built).
+
 ## 5. Data model
 
 ```mermaid
@@ -162,6 +164,7 @@ erDiagram
         bigint id PK
         string name UK
         string currency
+        decimal standard_cost_per_kwh
         int max_buildings
         datetime created_at
     }

@@ -10,6 +10,7 @@ def _serialize(institution: Institution) -> dict:
         "id": institution.id,
         "name": institution.name,
         "currency": institution.currency,
+        "standard_cost_per_kwh": float(institution.standard_cost_per_kwh),
         "max_buildings": institution.max_buildings,
         "created_at": institution.created_at.isoformat() if institution.created_at else None,
     }
@@ -39,6 +40,9 @@ def update_institution(user, payload: dict) -> dict:
 
     if "currency" in payload:
         institution.currency = payload["currency"]
+
+    if "standard_cost_per_kwh" in payload:
+        institution.standard_cost_per_kwh = payload["standard_cost_per_kwh"]
 
     if "max_buildings" in payload:
         current_count = BuildingRepository().count_for_institution(user.institution_id)

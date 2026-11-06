@@ -3,15 +3,58 @@
 {% block title %}Dashboard · Energy Monitor{% endblock %}
 
 {% block content %}
-<section>
+<section id="dashboard-root">
   <div class="page-head">
     <h1 class="page-title">Dashboard</h1>
     <p class="page-subtitle" id="page-subtitle"></p>
     <p class="muted small">Last updated: <span id="updated-at">--</span></p>
   </div>
 
-  <div id="dashboard-root"></div>
+  <div class="card-grid">
+    <div class="card stat-card">
+      <p class="stat-label">Total energy</p>
+      <p class="stat-value" id="stat-kwh">—</p>
+      <p class="stat-sub">All recorded months</p>
+    </div>
+    <div class="card stat-card">
+      <p class="stat-label">Total cost</p>
+      <p class="stat-value" id="stat-cost">—</p>
+      <p class="stat-sub">Recorded spend</p>
+    </div>
+    <div class="card stat-card">
+      <p class="stat-label">Buildings</p>
+      <p class="stat-value" id="stat-buildings">—</p>
+      <p class="stat-sub">Monitored sites</p>
+    </div>
+    <div class="card stat-card">
+      <p class="stat-label">Anomalies</p>
+      <p class="stat-value" id="stat-anomalies">—</p>
+      <p class="stat-sub">Months above baseline</p>
+    </div>
+  </div>
+
+  <div class="dashboard-grid">
+    <div class="card">
+      <h2 class="card-title">Energy use by month</h2>
+      <div class="chart-wrap">
+        <canvas id="consumptionChart"></canvas>
+      </div>
+      <p class="muted small" id="chart-empty" style="display:none;">No energy records yet. Add records to a building to see the trend.</p>
+    </div>
+
+    <div class="card">
+      <h2 class="card-title">Detected anomalies</h2>
+      <div id="anomaly-list">
+        <p class="muted">No anomalies detected.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:20px;">
+    <h2 class="card-title">Building performance</h2>
+    <div id="dashboard-buildings">
+      <p class="muted">No building data yet.</p>
+    </div>
+  </div>
 </section>
 {% endblock %}
-
-

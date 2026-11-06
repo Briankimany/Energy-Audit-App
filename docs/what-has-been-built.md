@@ -12,7 +12,7 @@ Related docs: [Architecture](architecture.md) · [API reference](api.md) · [For
 - 19 tests passing (phase 1)
 
 ## Phase 2 — Institutions, users, buildings (complete)
-- Institution settings: name, currency, max_buildings (admin-only patch)
+- Institution settings: name, currency, standard electricity rate per kWh, max_buildings (admin-only patch)
 - Users: CRUD (admin only), auditor creation with temp password, self-delete blocked
 - Buildings: CRUD (both roles), name unique per institution, floor area > 0, operating hours 1–24, max_buildings enforcement
 - `require_role` decorator, shared password utils, single blueprint registration loop
@@ -34,16 +34,16 @@ Related docs: [Architecture](architecture.md) · [API reference](api.md) · [For
 - Professional navy/teal/amber brand, light mode default, dark mode toggle (persisted)
 - Layout: topbar (64px) + sidebar (240px desktop) + content area
 - Pages: Login, Register, Dashboard, Buildings, Energy Records, Users, Settings, Compare
-- Dashboard: page shell with `#dashboard-root`; client renderer expects total kWh/cost cards, a teal bar chart of `monthly_series`, and an anomaly list. Known gap: the current `dashboard.html` only exposes `#dashboard-root`, while `app.js` writes to `stat-kwh`, `stat-cost`, `consumptionChart`, and `anomaly-list`, so those elements must be added for the dashboard to render.
+- Dashboard: populated stat cards (total kWh, total cost, building count, anomaly count), monthly consumption bar chart, anomaly list, and building performance table.
 - Buildings: add/edit/delete, view energy link
 - Users: add (admin only), list, delete
-- Settings: institution name/currency/max_buildings patch
-- Energy records: building selector, add form, CSV import with per-row errors + confirmation, record list/delete
-- Compare: EUI table with incomplete/fairness warnings
+- Settings: institution name/currency/standard electricity rate/max_buildings patch
+- Energy records: building selector, add form with automatic KSh cost calculation from the standard rate, CSV import with per-row errors + confirmation, record list/delete, monthly analysis chart and anomaly list
+- Compare: EUI table with data-coverage badges, fairness warning, and EUI bar chart
 - Client-side session gate: token stored in localStorage, `/api/auth/session` verification, unauthenticated `/dashboard` → `/login`
 
 ## Tests
-- **77 tests passing** (auth, error envelopes, roles, tenant isolation, limits, tenant isolation, energy import, analysis formulas, page rendering)
+- **81 tests passing** (auth, error envelopes, roles, tenant isolation, limits, energy import, analysis formulas, page rendering)
 
 ## Infrastructure
 - `create_database.py`: standalone DB bootstrap (reads `MYSQL_*` env via `build_database_url()`)
@@ -55,3 +55,12 @@ Related docs: [Architecture](architecture.md) · [API reference](api.md) · [For
 - Phase 5 — Equipment & reconciliation (equipment CRUD, reconciliation gap %, simple payback)
 - Phase 6 — Findings & recommendations (audit checklist, library measures, payback)
 - Phase 7 — Reports, PDF (WeasyPrint), export, seed script, final validation
+
+## Future enhancement — Centralized platform super-admin (not built)
+The current model is multi-tenant with institution-scoped admins. There is no platform-level super-admin who can create, suspend, or manage institutions across tenants. A future step could add:
+- A separate platform super-admin role and authentication path
+- Institution lifecycle management (create, suspend, archive, set limits and standard rate)
+- Cross-tenant read-only reporting and support access with an audit trail
+- Platform-wide usage metrics and billing hooks
+
+This is deliberately out of scope for Phases 1–4 and should be designed as a separate phase.

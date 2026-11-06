@@ -7,5 +7,6 @@
 - [ ] Phase 5 — Equipment & reconciliation
 - [ ] Phase 6 — Findings & recommendations
 - [ ] Phase 7 — Reports, PDF, export, seed, final validation
+- [ ] Future — Centralized platform super-admin (institution lifecycle, cross-tenant support, audit trail)
 
-Status: Phase 4 complete (73 tests passing). Next: Phase 5.
+Status: Phase 4 complete (81 tests passing). Next: Phase 5.

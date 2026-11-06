@@ -1,3 +1,5 @@
+from decimal import Decimal, InvalidOperation
+
 from server.errors import ValidationError
 from server.utils.validators import get_json_object
 
@@ -16,6 +18,22 @@ def _validate_currency(value) -> str:
             {"currency": ["must be a 3-letter code"]},
         )
     return currency.upper()
+
+
+def _validate_standard_cost_per_kwh(value) -> Decimal:
+    try:
+        number = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        raise ValidationError(
+            "standard_cost_per_kwh must be a number",
+            {"standard_cost_per_kwh": ["must be a number"]},
+        )
+    if number < 0:
+        raise ValidationError(
+            "standard_cost_per_kwh must not be negative",
+            {"standard_cost_per_kwh": ["must be greater than or equal to 0"]},
+        )
+    return number.quantize(Decimal("0.0001"))
 
 
 def _validate_max_buildings(value) -> int:
@@ -41,6 +59,10 @@ def validate_update_payload() -> dict:
         cleaned["name"] = _validate_name(payload["name"])
     if "currency" in payload:
         cleaned["currency"] = _validate_currency(payload["currency"])
+    if "standard_cost_per_kwh" in payload:
+        cleaned["standard_cost_per_kwh"] = _validate_standard_cost_per_kwh(
+            payload["standard_cost_per_kwh"]
+        )
     if "max_buildings" in payload:
         cleaned["max_buildings"] = _validate_max_buildings(payload["max_buildings"])
     return cleaned

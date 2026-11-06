@@ -22,13 +22,11 @@
     </a>
     <div class="topbar-actions">
       <button type="button" class="btn btn-icon" id="theme-toggle" aria-label="Toggle dark mode"></button>
-      {% if user %}
-        <div class="topbar-user">
-          <span class="topbar-institution">{{ user.institution.name }}</span>
-          <span class="topbar-user-meta">{{ user.email }} &middot; {{ user.role }}</span>
-        </div>
-        <button type="button" class="btn btn-outline" id="logout-btn">Log out</button>
-      {% endif %}
+      <div class="topbar-user" id="topbar-user" style="display:none;">
+        <span class="topbar-institution" id="topbar-institution"></span>
+        <span class="topbar-user-meta" id="topbar-user-meta"></span>
+      </div>
+      <button type="button" class="btn btn-outline" id="logout-btn" style="display:none;">Log out</button>
     </div>
   </header>
 
@@ -39,10 +37,8 @@
         <div class="nav-group">
           <p class="nav-section">Overview</p>
           <a class="nav-item{% if request.endpoint == 'pages.dashboard' %} active{% endif %}" href="{{ url_for('pages.dashboard') }}">Dashboard</a>
-          {% if user %}
-            <a class="nav-item{% if request.endpoint == 'pages.users' %} active{% endif %}" href="{{ url_for('pages.users') }}">Users</a>
-            <a class="nav-item{% if request.endpoint == 'pages.settings' %} active{% endif %}" href="{{ url_for('pages.settings') }}">Settings</a>
-          {% endif %}
+          <a class="nav-item admin-only{% if request.endpoint == 'pages.users' %} active{% endif %}" href="{{ url_for('pages.users') }}">Users</a>
+          <a class="nav-item admin-only{% if request.endpoint == 'pages.settings' %} active{% endif %}" href="{{ url_for('pages.settings') }}">Settings</a>
         </div>
         <div class="nav-group">
           <p class="nav-section">Monitoring</p>

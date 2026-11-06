@@ -10,11 +10,19 @@ This document describes the calculations and transformations performed after dat
 |-------|------|------------|
 | `month` | `YYYY-MM` | Month 01–12; stored as first day of month |
 | `kwh` | kilowatt-hours | Numeric, >= 0 |
-| `cost` | institution currency | Numeric, >= 0; supplied directly, not derived from a tariff |
+| `cost` | institution currency | Numeric, >= 0; supplied directly or auto-calculated by the UI from the standard rate |
 | `floor_area_m2` | square metres | Numeric, > 0 |
 | `operating_hours` | hours/day | Integer, 1–24 |
 
 The backend does not estimate missing months. It sums exactly the records that exist.
+
+The energy records UI auto-calculates a cost when the cost field is left blank:
+
+```text
+suggested_cost = round(kwh * institution.standard_cost_per_kwh, 2)
+```
+
+The calculated value is submitted as the stored `cost`, so analysis and dashboard totals continue to use the same `cost` field. The institution standard rate defaults to `21.84` and is editable by an admin in Settings. CSV imports still require an explicit `cost` column.
 
 ## 2. Annual totals
 
@@ -358,6 +366,6 @@ password_hash   = bcrypt(password, BCRYPT_ROUNDS)
 - No annualization or pro-rating for partial years.
 - No weather normalization.
 - No carbon or solar estimation.
-- No tariff model; cost is whatever the user supplies.
+- No tariff model beyond a single institution-level standard cost per kWh; no time-of-use, demand charges, or tiered tariffs.
 - No anomaly guard for a zero baseline.
 - EUI is numeric even when `eui_note` is `partial` or `insufficient`.

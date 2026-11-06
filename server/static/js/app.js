@@ -105,6 +105,30 @@ function hideFormError() {
   errorEl.classList.add("hidden");
 }
 
+function applySessionUser(user) {
+  const userWrap = document.getElementById("topbar-user");
+  const institutionEl = document.getElementById("topbar-institution");
+  const metaEl = document.getElementById("topbar-user-meta");
+  const logoutBtn = document.getElementById("logout-btn");
+
+  if (userWrap) {
+    userWrap.style.display = "flex";
+  }
+  if (institutionEl) {
+    institutionEl.textContent = user.institution_name || "";
+  }
+  if (metaEl) {
+    metaEl.textContent = [user.email, user.role].filter(Boolean).join(" · ");
+  }
+  if (logoutBtn) {
+    logoutBtn.style.display = "inline-flex";
+  }
+
+  document.querySelectorAll(".admin-only").forEach((el) => {
+    el.style.display = user.role === "admin" ? "" : "none";
+  });
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
   const themeToggle = document.getElementById("theme-toggle");
   if (themeToggle) {
@@ -174,6 +198,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     return;
   }
 
+  applySessionUser(user);
+
   if (path === "/login" || path === "/register") {
     window.location.href = "/dashboard";
     return;
@@ -198,16 +224,81 @@ async function apiDashboard() {
   return body.data ? body.data : null;
 }
 
+function escapeHtml(value) {
+  return String(value == null ? "" : value).replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  }[c]));
+}
+
+function formatNumber(value, digits) {
+  if (value == null) {
+    return "—";
+  }
+  return Number(value).toLocaleString(undefined, {
+    minimumFractionDigits: digits == null ? 0 : digits,
+    maximumFractionDigits: digits == null ? 0 : digits,
+  });
+}
+
 function formatCurrency(value, currency) {
   if (value == null) {
     return "—";
   }
-  const sym = currency === "KES" ? "KES " : currency === "USD" ? "$" : currency + " ";
+  const sym = currency === "KES" ? "KSh " : currency === "USD" ? "$" : currency ? currency + " " : "";
   return sym + Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function chartColors() {
+  const styles = getComputedStyle(document.documentElement);
+  return {
+    grid: styles.getPropertyValue("--color-border").trim() || "#e3e8ef",
+    text: styles.getPropertyValue("--color-text-muted").trim() || "#6b7a8d",
+  };
+}
+
+let dashboardChart = null;
+
+function renderComparisonTable(container, comparisons, currency) {
+  if (!container) {
+    return;
+  }
+  if (!comparisons || comparisons.length === 0) {
+    container.innerHTML = '<p class="muted">No building data yet.</p>';
+    return;
+  }
+  const rows = comparisons
+    .map((c) => {
+      const eui = c.eui == null ? "—" : Number(c.eui).toFixed(2);
+      const note = c.eui_note || "insufficient";
+      return `
+        <tr>
+          <td>${escapeHtml(c.name)}</td>
+          <td>${escapeHtml(c.type)}</td>
+          <td>${formatNumber(c.total_kwh, 1)}</td>
+          <td>${formatCurrency(c.total_cost, currency)}</td>
+          <td>${eui}</td>
+          <td><span class="badge badge-${escapeHtml(note)}">${escapeHtml(note)}</span></td>
+        </tr>`;
+    })
+    .join("");
+  container.innerHTML = `
+    <table class="data-table">
+      <thead>
+        <tr><th>Building</th><th>Type</th><th>Total kWh</th><th>Total cost</th><th>EUI</th><th>Data</th></tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
 function renderDashboardData(data, user, currency) {
-  document.getElementById("updated-at").textContent = new Date().toLocaleDateString();
+  const updated = document.getElementById("updated-at");
+  if (updated) {
+    updated.textContent = new Date().toLocaleDateString();
+  }
 
   const subtitle = document.getElementById("page-subtitle");
   if (subtitle && user.institution_name) {
@@ -216,39 +307,66 @@ function renderDashboardData(data, user, currency) {
 
   const kwhEl = document.getElementById("stat-kwh");
   const costEl = document.getElementById("stat-cost");
+  const buildingsEl = document.getElementById("stat-buildings");
+  const anomaliesEl = document.getElementById("stat-anomalies");
+
   if (kwhEl) {
-    kwhEl.textContent = ((data.total_kwh || 0) / 1).toLocaleString(undefined, {
-      minimumFractionDigits: 1,
-      maximumFractionDigits: 1,
-    }) + " kWh";
+    kwhEl.textContent = formatNumber(data.total_kwh || 0, 1) + " kWh";
   }
   if (costEl) {
     costEl.textContent = formatCurrency(data.total_cost || 0, currency);
   }
+  if (buildingsEl) {
+    buildingsEl.textContent = String(data.building_count || 0);
+  }
 
   const anomalies = data.anomalies || [];
+  if (anomaliesEl) {
+    anomaliesEl.textContent = String(anomalies.length);
+  }
+
+  const namesById = {};
+  (data.comparisons || []).forEach((comparison) => {
+    namesById[comparison.building_id] = comparison.name;
+  });
+
   const anomalyList = document.getElementById("anomaly-list");
   if (anomalyList) {
     if (anomalies.length === 0) {
-      anomalyList.innerHTML = "<p class=\"muted\">No anomalies detected.</p>";
+      anomalyList.innerHTML = '<p class="muted">No anomalies detected.</p>';
     } else {
       anomalyList.innerHTML = anomalies
-        .map(
-          (a) =>
-            "<div class=\"anomaly-row\"><span class=\"anomaly-month\">" +
-            (a.month || "") +
-            "</span><span class=\"anomaly-value\">+" +
-            (a.percent_above || 0).toFixed(0) +
+        .map((anomaly) => {
+          const label = [anomaly.month, namesById[anomaly.building_id]].filter(Boolean).join(" · ");
+          return (
+            '<div class="anomaly-row"><span class="anomaly-month">' +
+            escapeHtml(label) +
+            '</span><span class="anomaly-value">+' +
+            Number(anomaly.percent_above || 0).toFixed(0) +
             "%</span></div>"
-        )
+          );
+        })
         .join("");
     }
   }
 
+  renderComparisonTable(document.getElementById("dashboard-buildings"), data.comparisons || [], currency);
+
   const series = data.monthly_series || [];
   const ctx = document.getElementById("consumptionChart");
+  const emptyEl = document.getElementById("chart-empty");
+  if (emptyEl) {
+    emptyEl.style.display = series.length ? "none" : "block";
+  }
+
+  if (dashboardChart) {
+    dashboardChart.destroy();
+    dashboardChart = null;
+  }
+
   if (ctx && series.length) {
-    new Chart(ctx, {
+    const colors = chartColors();
+    dashboardChart = new Chart(ctx, {
       type: "bar",
       data: {
         labels: series.map((s) => s.month.slice(0, 7)),
@@ -267,8 +385,8 @@ function renderDashboardData(data, user, currency) {
         maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
-          y: { beginAtZero: true, grid: { color: "#e3e8ef" }, ticks: { color: "#6b7a8d" } },
-          x: { grid: { display: false }, ticks: { color: "#6b7a8d" } },
+          y: { beginAtZero: true, grid: { color: colors.grid }, ticks: { color: colors.text } },
+          x: { grid: { display: false }, ticks: { color: colors.text } },
         },
       },
     });

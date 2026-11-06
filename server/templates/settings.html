@@ -20,6 +20,11 @@
         <p class="muted small">3-letter currency code (e.g. USD, KES, EUR).</p>
       </div>
       <div class="field">
+        <label class="field-label" for="standard_cost_per_kwh">Standard electricity rate (per kWh)</label>
+        <input class="input" id="standard_cost_per_kwh" name="standard_cost_per_kwh" type="number" min="0" step="0.0001" required>
+        <p class="muted small">Used to auto-calculate cost from kWh on the energy records page. Default: 21.84 KSh/kWh.</p>
+      </div>
+      <div class="field">
         <label class="field-label" for="max_buildings">Maximum buildings</label>
         <input class="input" id="max_buildings" name="max_buildings" type="number" min="1" max="50" required>
         <p class="muted small">Cannot be lowered below your current building count.</p>
@@ -49,12 +54,14 @@ async function loadSettings(){
   const data = body.data || {};
   document.getElementById("name").value = data.name || "";
   document.getElementById("currency").value = data.currency || "";
+  document.getElementById("standard_cost_per_kwh").value = data.standard_cost_per_kwh == null ? "" : data.standard_cost_per_kwh;
   document.getElementById("max_buildings").value = data.max_buildings || "";
   document.getElementById("settings-values").innerHTML = `
     <p><strong>Institution:</strong> ${esc(data.name || "—")}</p>
     <p><strong>Currency:</strong> ${esc(data.currency || "—")}</p>
+    <p><strong>Standard rate:</strong> ${esc(data.standard_cost_per_kwh == null ? "—" : data.standard_cost_per_kwh)} per kWh</p>
     <p><strong>Max buildings:</strong> ${data.max_buildings || "—"}</p>
-  </div>;
+  `;
 }
 
 async function saveSettings(e){
@@ -63,6 +70,7 @@ async function saveSettings(e){
   const payload = {
     name: document.getElementById("name").value.trim(),
     currency: document.getElementById("currency").value.trim().toUpperCase(),
+    standard_cost_per_kwh: Number(document.getElementById("standard_cost_per_kwh").value),
     max_buildings: Number(document.getElementById("max_buildings").value),
   };
   const res = await fetch("/api/institution", { method:"PATCH", headers:{...headers,"Content-Type":"application/json"}, body: JSON.stringify(payload) });

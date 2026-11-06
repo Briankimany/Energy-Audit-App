@@ -47,6 +47,8 @@ def session():
             "user": {
                 "id": user.id,
                 "institution_id": user.institution_id,
+                "institution_name": user.institution.name if user.institution else None,
+                "email": user.email,
                 "role": user.role,
                 "must_change_password": user.must_change_password,
             }

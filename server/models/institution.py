@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from decimal import Decimal
 
 from server.extensions import db
 
@@ -13,6 +14,12 @@ class Institution(db.Model):
     )
     name = db.Column(db.String(255), nullable=False, unique=True)
     currency = db.Column(db.String(3), nullable=False, default="KES")
+    standard_cost_per_kwh = db.Column(
+        db.Numeric(10, 4),
+        nullable=False,
+        default=Decimal("21.84"),
+        server_default="21.84",
+    )
     max_buildings = db.Column(db.Integer, nullable=False, default=5)
     created_at = db.Column(
         db.DateTime(timezone=True),

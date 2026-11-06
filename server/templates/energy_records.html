@@ -32,7 +32,8 @@
         </div>
         <div class="field">
           <label class="field-label" for="record-cost">Cost</label>
-          <input class="input" id="record-cost" name="cost" type="number" step="0.01" min="0" required>
+          <input class="input" id="record-cost" name="cost" type="number" step="0.01" min="0" placeholder="Auto from standard rate">
+          <p class="muted small" id="standard-rate-note">Standard rate: loading&hellip;</p>
         </div>
         <div id="record-error" class="form-error hidden"></div>
         <button class="btn btn-primary" type="submit">Add record</button>
@@ -46,6 +47,9 @@
         <div class="field">
           <label class="field-label" for="import-csv">CSV text</label>
           <textarea class="input" id="import-csv" name="csv" rows="4" placeholder="month,kwh,cost&#10;2025-01,1200,2400&#10;2025-02,1100,2200"></textarea>
+        </div>
+        <div class="field">
+          <button type="button" class="btn btn-outline btn-sm" id="load-sample-csv">Load 12 months of sample data</button>
         </div>
         <div class="field">
           <label class="field-label" style="font-weight:500;">
@@ -63,11 +67,49 @@
       <div id="records-loading">Loading&hellip;</div>
       <table class="data-table" id="records-table" style="display:none;">
         <thead>
-          <tr><th>Month</th><th>kWh</th><th>Cost</th><th>Actions</th></tr>
+          <tr><th>Month</th><th>kWh</th><th>Cost</th><th>Standard cost</th><th>Actions</th></tr>
         </thead>
         <tbody id="records-tbody"></tbody>
       </table>
       <p id="records-empty" class="muted" style="display:none;">No energy records yet. Add one above.</p>
+    </div>
+
+    <div id="analysis-block" style="margin-top:24px;">
+      <div class="card-grid">
+        <div class="card stat-card">
+          <p class="stat-label">Total energy</p>
+          <p class="stat-value" id="analysis-kwh">—</p>
+        </div>
+        <div class="card stat-card">
+          <p class="stat-label">Total cost</p>
+          <p class="stat-value" id="analysis-cost">—</p>
+        </div>
+        <div class="card stat-card">
+          <p class="stat-label">EUI</p>
+          <p class="stat-value" id="analysis-eui">—</p>
+        </div>
+        <div class="card stat-card">
+          <p class="stat-label">Data coverage</p>
+          <p class="stat-value" id="analysis-note">—</p>
+        </div>
+      </div>
+
+      <div class="dashboard-grid" style="margin-top:20px;">
+        <div class="card">
+          <h2 class="card-title">Monthly usage</h2>
+          <div class="chart-wrap">
+            <canvas id="buildingEnergyChart"></canvas>
+          </div>
+          <p class="muted small" id="analysis-chart-empty" style="display:none;">Add records to see the trend.</p>
+        </div>
+        <div class="card">
+          <h2 class="card-title">Anomalies</h2>
+          <div id="analysis-anomalies">
+            <p class="muted">No anomalies detected.</p>
+          </div>
+        </div>
+      </div>
+      <p class="muted small" id="analysis-period" style="margin-top:12px;"></p>
     </div>
   </div>
 </section>
@@ -77,10 +119,34 @@
 <script>
 const token = localStorage.getItem("energy_audit_token");
 const headers = token ? { Authorization: "Bearer " + token } : {};
+const initialBuildingId = {{ building_id | tojson }};
+
+let currentBuildingId = null;
+let currency = "";
+let standardRate = 0;
+let costEdited = false;
+let buildingChart = null;
 
 function esc(t){ return String(t).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[c])); }
 
-let currentBuildingId = null;
+function money(value){
+  if(typeof formatCurrency === "function"){ return formatCurrency(value, currency); }
+  return String(value);
+}
+
+async function loadCurrency(){
+  const res = await fetch("/api/institution", { headers });
+  const body = await res.json();
+  const data = body.data || {};
+  currency = data.currency || "";
+  standardRate = Number(data.standard_cost_per_kwh) || 0;
+  const note = document.getElementById("standard-rate-note");
+  if(note){
+    note.textContent = standardRate > 0
+      ? `Standard rate: ${money(standardRate)} per kWh. Leave cost blank to auto-calculate.`
+      : "No standard rate configured. Set one in Settings or enter a cost manually.";
+  }
+}
 
 async function loadBuildings(){
   const res = await fetch("/api/buildings", { headers });
@@ -92,10 +158,28 @@ async function loadBuildings(){
   data.forEach(b => {
     const o = document.createElement("option");
     o.value = b.id;
-    o.textContent = esc(b.name);
+    o.textContent = b.name;
     select.appendChild(o);
   });
-  if(data.length === 0){ empty.style.display = "block"; }
+  if(data.length === 0){ empty.style.display = "block"; return; }
+  if(initialBuildingId){ selectBuilding(initialBuildingId); }
+}
+
+function selectBuilding(id){
+  const select = document.getElementById("building-select");
+  const value = String(id);
+  const match = Array.from(select.options).find(o => o.value === value);
+  if(!match) return;
+  select.value = value;
+  currentBuildingId = Number(value);
+  costEdited = false;
+  document.getElementById("energy-section").style.display = "block";
+  document.getElementById("energy-building-title").textContent = "Energy records – " + match.textContent;
+  document.getElementById("records-loading").style.display = "block";
+  document.getElementById("records-table").style.display = "none";
+  document.getElementById("records-empty").style.display = "none";
+  loadRecords();
+  loadAnalysis();
 }
 
 async function loadRecords(){
@@ -108,13 +192,15 @@ async function loadRecords(){
   const empty = document.getElementById("records-empty");
   const data = body.data || [];
   loading.style.display = "none";
-  if(data.length === 0){ empty.style.display = "block"; return; }
+  if(data.length === 0){ table.style.display = "none"; empty.style.display = "block"; return; }
+  empty.style.display = "none";
   table.style.display = "table";
   tbody.innerHTML = data.map(r => `
     <tr>
       <td>${esc(r.month)}</td>
       <td>${Number(r.kwh||0).toLocaleString(undefined,{minimumFractionDigits:2})}</td>
-      <td>${Number(r.cost||0).toLocaleString(undefined,{minimumFractionDigits:2})}</td>
+      <td>${money(r.cost||0)}</td>
+      <td>${standardRate > 0 ? money(Number(r.kwh||0) * standardRate) : "—"}</td>
       <td>
         <button class="btn btn-outline btn-sm" style="color:var(--color-red)" onclick="delRecord(${r.id}, '${esc(r.month)}')">Delete</button>
       </td>
@@ -122,25 +208,102 @@ async function loadRecords(){
   `).join("");
 }
 
+async function loadAnalysis(){
+  if(!currentBuildingId) return;
+  const res = await fetch(`/api/buildings/${currentBuildingId}/analysis`, { headers });
+  const body = await res.json();
+  if(!res.ok || !body.data) return;
+  const d = body.data;
+  const records = d.monthly_records || [];
+
+  document.getElementById("analysis-kwh").textContent =
+    Number(d.total_kwh||0).toLocaleString(undefined,{minimumFractionDigits:1,maximumFractionDigits:1}) + " kWh";
+  document.getElementById("analysis-cost").textContent = money(d.total_cost||0);
+  document.getElementById("analysis-eui").textContent = d.eui == null ? "—" : Number(d.eui).toFixed(2) + " kWh/m²";
+
+  const note = d.eui_note || "insufficient";
+  document.getElementById("analysis-note").innerHTML = `<span class="badge badge-${esc(note)}">${esc(note)}</span>`;
+
+  const period = records.length ? `${records[0].month} to ${records[records.length-1].month}` : "No records yet";
+  document.getElementById("analysis-period").textContent = `${records.length} month(s) recorded · ${period}`;
+
+  const anomalyBox = document.getElementById("analysis-anomalies");
+  const anomalies = d.anomalies || [];
+  if(anomalies.length === 0){
+    anomalyBox.innerHTML = '<p class="muted">No anomalies detected.</p>';
+  } else {
+    anomalyBox.innerHTML = anomalies.map(a =>
+      '<div class="anomaly-row"><span class="anomaly-month">' + esc(a.month) + ' · ' +
+      Number(a.kwh||0).toLocaleString() + ' kWh</span><span class="anomaly-value">+' +
+      Number(a.percent_above||0).toFixed(0) + '%</span></div>'
+    ).join("");
+  }
+
+  const ctx = document.getElementById("buildingEnergyChart");
+  const emptyEl = document.getElementById("analysis-chart-empty");
+  if(emptyEl){ emptyEl.style.display = records.length ? "none" : "block"; }
+  if(buildingChart){ buildingChart.destroy(); buildingChart = null; }
+
+  if(ctx && records.length){
+    const colors = typeof chartColors === "function" ? chartColors() : { grid: "#e3e8ef", text: "#6b7a8d" };
+    buildingChart = new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels: records.map(r => r.month.slice(0,7)),
+        datasets: [{
+          label: "kWh",
+          data: records.map(r => r.kwh),
+          backgroundColor: "#168C83",
+          borderWidth: 0,
+          barPercentage: 0.6,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { beginAtZero: true, grid: { color: colors.grid }, ticks: { color: colors.text } },
+          x: { grid: { display: false }, ticks: { color: colors.text } },
+        },
+      },
+    });
+  }
+}
+
 async function addRecord(e){
   e.preventDefault();
   document.getElementById("record-error").classList.add("hidden");
+  const kwhInput = document.getElementById("record-kwh");
+  const costInput = document.getElementById("record-cost");
+  const kwh = Number(kwhInput.value);
+  const rawCost = costInput.value.trim();
+  if(rawCost === "" && standardRate <= 0){
+    document.getElementById("record-error").textContent = "Set a standard rate in Settings or enter a cost manually.";
+    document.getElementById("record-error").classList.remove("hidden");
+    return;
+  }
   const payload = {
     month: document.getElementById("record-month").value,
-    kwh: Number(document.getElementById("record-kwh").value),
-    cost: Number(document.getElementById("record-cost").value),
+    kwh: kwh,
+    cost: rawCost === "" ? kwh * standardRate : Number(rawCost),
   };
   const res = await fetch(`/api/buildings/${currentBuildingId}/energy`, { method:"POST", headers:{...headers,"Content-Type":"application/json"}, body: JSON.stringify(payload) });
   const bdy = await res.json();
   if(!res.ok){ document.getElementById("record-error").textContent = bdy.message || "Failed to add record"; document.getElementById("record-error").classList.remove("hidden"); return; }
+  costEdited = false;
   document.getElementById("add-record-form").reset();
+  document.getElementById("records-table").style.display = "none";
+  document.getElementById("records-empty").style.display = "none";
+  document.getElementById("records-loading").style.display = "block";
   loadRecords();
+  loadAnalysis();
 }
 
 async function delRecord(id, month){
   if(!confirm(`Delete record for ${esc(month)}?`)) return;
   const res = await fetch(`/api/buildings/${currentBuildingId}/energy/${id}`, { method:"DELETE", headers });
-  if(res.ok) loadRecords();
+  if(res.ok){ loadRecords(); loadAnalysis(); }
   else alert("Delete failed");
 }
 
@@ -164,21 +327,56 @@ async function importCsv(e){
     html += `<p class="muted">Set "I confirm" above and retry to import the valid rows.</p>`;
   }
   document.getElementById("import-preview").innerHTML = html;
-  if(d.imported && d.imported > 0) loadRecords();
+  if(d.imported && d.imported > 0){ loadRecords(); loadAnalysis(); }
 }
 
+function sampleCsv(){
+  const values = [1200, 1150, 1300, 1250, 1400, 1600, 1800, 1750, 1500, 1350, 1250, 1300];
+  const lines = ["month,kwh,cost"];
+  const rate = standardRate > 0 ? standardRate : 0;
+  values.forEach((kwh, index) => {
+    const month = String(index + 1).padStart(2, "0");
+    lines.push(`2025-${month},${kwh},${(kwh * rate).toFixed(2)}`);
+  });
+  return lines.join("\n");
+}
+
+function updateCostFromKwh(){
+  if(costEdited) return;
+  const kwhInput = document.getElementById("record-kwh");
+  const costInput = document.getElementById("record-cost");
+  if(standardRate <= 0 || kwhInput.value.trim() === "") return;
+  const kwh = Number(kwhInput.value);
+  if(Number.isNaN(kwh)) return;
+  costInput.value = (kwh * standardRate).toFixed(2);
+}
+
+document.getElementById("record-kwh").addEventListener("input", updateCostFromKwh);
+document.getElementById("record-cost").addEventListener("input", (e) => {
+  costEdited = e.target.value.trim() !== "";
+});
+
 document.getElementById("building-select").addEventListener("change", (e) => {
-  currentBuildingId = e.target.value ? Number(e.target.value) : null;
-  document.getElementById("energy-section").style.display = currentBuildingId ? "block" : "none";
-  if(currentBuildingId){
-    document.getElementById("energy-building-title").textContent = `Energy records &ndash; ${document.getElementById("building-select").selectedOptions[0].text}`;
-    loadRecords();
+  if(!e.target.value){
+    currentBuildingId = null;
+    document.getElementById("energy-section").style.display = "none";
+    return;
   }
+  selectBuilding(e.target.value);
+});
+
+document.getElementById("load-sample-csv").addEventListener("click", () => {
+  document.getElementById("import-csv").value = sampleCsv();
+  document.getElementById("import-confirm").checked = false;
+  document.getElementById("import-preview").innerHTML = '<p class="muted">Sample data loaded. Review it, tick confirm, then import.</p>';
 });
 
 document.getElementById("add-record-form").addEventListener("submit", addRecord);
 document.getElementById("import-form").addEventListener("submit", importCsv);
 
-loadBuildings();
+(async function init(){
+  await loadCurrency();
+  await loadBuildings();
+})();
 </script>
 {% endblock %}

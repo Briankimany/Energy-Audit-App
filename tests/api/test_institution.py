@@ -12,6 +12,7 @@ def test_get_institution(client, admin_headers):
     data = res.get_json()["data"]
     assert data["name"] == "Test Institute"
     assert data["currency"] == "KES"
+    assert data["standard_cost_per_kwh"] == 21.84
     assert data["max_buildings"] == 5
 
 
@@ -23,12 +24,18 @@ def test_admin_updates_institution(client, admin_headers):
     res = client.patch(
         "/api/institution",
         headers=admin_headers,
-        json={"name": "Renamed Institute", "currency": "usd", "max_buildings": 10},
+        json={
+            "name": "Renamed Institute",
+            "currency": "usd",
+            "standard_cost_per_kwh": 24.5,
+            "max_buildings": 10,
+        },
     )
     assert res.status_code == 200
     data = res.get_json()["data"]
     assert data["name"] == "Renamed Institute"
     assert data["currency"] == "USD"
+    assert data["standard_cost_per_kwh"] == 24.5
     assert data["max_buildings"] == 10
 
 
@@ -39,6 +46,15 @@ def test_auditor_cannot_update_institution(client, auditor_headers):
 
 def test_invalid_currency_rejected(client, admin_headers):
     res = client.patch("/api/institution", headers=admin_headers, json={"currency": "us"})
+    assert res.status_code == 400
+
+
+def test_invalid_standard_cost_per_kwh_rejected(client, admin_headers):
+    res = client.patch(
+        "/api/institution",
+        headers=admin_headers,
+        json={"standard_cost_per_kwh": -1},
+    )
     assert res.status_code == 400
 
 
