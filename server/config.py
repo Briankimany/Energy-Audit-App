@@ -24,12 +24,13 @@ def _parse_database_url(database_url: str) -> dict:
 
 
 def build_database_url() -> str:
-    host = os.environ.get("MYSQL_HOST", DEFAULT_MYSQL_HOST)
-    port = os.environ.get("MYSQL_PORT", DEFAULT_MYSQL_PORT)
-    user = os.environ.get("MYSQL_USER", DEFAULT_MYSQL_USER)
-    password = os.environ.get("MYSQL_PASSWORD", DEFAULT_MYSQL_PASSWORD)
-    database = os.environ.get("MYSQL_DATABASE", DEFAULT_MYSQL_DATABASE)
-    return f"mysql+mysqlconnector://{user}:{quote_plus(password)}@{host}:{port}/{database}"
+    host = os.environ.get("MYSQL_HOST") or DEFAULT_MYSQL_HOST
+    port = os.environ.get("MYSQL_PORT") or ""
+    user = os.environ.get("MYSQL_USER") or DEFAULT_MYSQL_USER
+    password = os.environ.get("MYSQL_PASSWORD") or DEFAULT_MYSQL_PASSWORD
+    database = os.environ.get("MYSQL_DATABASE") or DEFAULT_MYSQL_DATABASE
+    host_port = f"{host}:{port}" if port else host
+    return f"mysql+mysqlconnector://{user}:{quote_plus(password)}@{host_port}/{database}"
 
 
 class Config:
