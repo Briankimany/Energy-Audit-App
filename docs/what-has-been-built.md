@@ -1,6 +1,6 @@
 # What has been built
 
-Related docs: [Architecture](architecture.md) · [API reference](api.md) · [Formulas](formulas.md)
+Related docs: [Simplified architecture](simplified-architecture.md) · [Architecture](architecture.md) · [API reference](api.md) · [Formulas](formulas.md)
 
 ## Phase 1 — Foundation & auth (complete)
 - Flask app factory (`create_app`) with config classes (dev/testing)

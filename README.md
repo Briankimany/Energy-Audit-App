@@ -19,6 +19,7 @@
 
 ## Documentation
 
+- [Simplified architecture for presentations](./docs/simplified-architecture.md)
 - [Architecture and information flow](./docs/architecture.md)
 - [API contract](./docs/api.md)
 - [Analysis formulas](./docs/formulas.md)

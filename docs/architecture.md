@@ -1,6 +1,6 @@
 # Architecture — Information Flow
 
-Related docs: [API reference](api.md) · [Formulas](formulas.md) · [What has been built](what-has-been-built.md)
+Related docs: [Simplified architecture](simplified-architecture.md) · [API reference](api.md) · [Formulas](formulas.md) · [What has been built](what-has-been-built.md)
 
 This document explains how information moves through the system: requests, authentication, tenant scoping, database access, analysis, CSV ingestion, and configuration. It contains no file-tree diagrams.
 
