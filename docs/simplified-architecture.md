@@ -27,6 +27,7 @@ flowchart TD
     J --> P["Portfolio aggregator<br/>institution totals and building cost share"]
     P --> L["Findings and recommendations"]
     L --> M["Reports and exports"]
+```
 
 ## 2. Feature map: current and planned state
 
