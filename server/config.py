@@ -9,7 +9,13 @@ class Config:
     SECRET_KEY = os.environ.get("JWT_SECRET", "dev-jwt-secret-change-me-in-production-please")
     SQLALCHEMY_DATABASE_URI = os.environ.get(
         "DATABASE_URL",
-        "mysql+mysqlconnector://root:root@localhost:3306/energy_audit",
+        "mysql+mysqlconnector://{}:{}@{}:{}/{}".format(
+            os.environ.get("MYSQL_USER", "root"),
+            os.environ.get("MYSQL_PASSWORD", "root"),
+            os.environ.get("MYSQL_HOST", "127.0.0.1"),
+            os.environ.get("MYSQL_PORT", "3306"),
+            os.environ.get("MYSQL_DATABASE", "energy_audit"),
+        ),
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     JWT_EXPIRATION_SECONDS = int(os.environ.get("JWT_EXPIRATION_SECONDS", "3600"))
