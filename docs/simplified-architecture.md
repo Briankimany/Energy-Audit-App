@@ -37,6 +37,53 @@ Read it left to right:
 - The comparison shows whether the two agree.
 - The problems and reports turn the numbers into action.
 
+### 2.1 Block diagram: information flow and outputs
+
+This is the detailed view. Each main block produces an output. The status shows whether that part is working today.
+
+```mermaid
+flowchart LR
+    E["1. Equipment records<br/>(planned)<br/>type, watts, quantity<br/>hours per day, days per year"]
+    EO["Output<br/>yearly kWh and cost<br/>for each device"]
+    E --> EO
+
+    B["2. Building evaluation<br/>(planned)<br/>group devices by floor<br/>and building"]
+    BO["Output<br/>floor totals<br/>building total<br/>equipment breakdown"]
+    B --> BO
+    EO --> B
+
+    U["3. Energy utilisation<br/>(partly ready)<br/>compare equipment<br/>with monthly bills"]
+    UO["Output<br/>yearly use<br/>energy per square metre<br/>monthly trend, unusual months<br/>gap against bills"]
+    U --> UO
+    BO --> U
+
+    C["4. Total cost<br/>(partly ready)<br/>apply price per kWh<br/>add all buildings"]
+    CO["Output<br/>building cost<br/>organisation total cost<br/>building cost share"]
+    C --> CO
+    UO --> C
+
+    A["5. Problems and fixes<br/>(planned)"]
+    AO["Output<br/>savings<br/>time to recover cost<br/>reports"]
+    A --> AO
+    CO --> A
+
+    BILL["Monthly bills<br/>(ready)"] --> U
+    BUILD["Building details<br/>(ready)"] --> B
+    RATE["Electricity price<br/>(ready)"] --> C
+```
+
+| Stage | Output | Status |
+|---|---|---|
+| 1. Equipment records | Yearly kWh and cost per device | Planned |
+| 2. Building evaluation | Floor totals, building total, equipment breakdown | Planned |
+| 3. Energy utilisation | Yearly use, energy per square metre, monthly trend, unusual months, gap against bills | Partly ready |
+| 4. Total cost | Building cost, organisation total cost, building cost share | Partly ready |
+| 5. Problems and fixes | Savings, time to recover cost, reports | Planned |
+
+**Ready today:** monthly bills, building details, electricity price, bill-based building analysis, dashboard, and building comparison.
+
+**Not built yet:** equipment records, floor-based equipment evaluation, equipment breakdown, equipment-versus-bill comparison, building cost share, problems, suggested fixes, and reports.
+
 ## 3. How a building is set up
 
 A building has floors. Floors are of two kinds:
