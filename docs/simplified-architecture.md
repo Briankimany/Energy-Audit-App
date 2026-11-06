@@ -243,7 +243,7 @@ Each suggested fix can have:
 - Whether it is proposed, approved, or done
 - A note saying whether the estimate is rough or detailed
 
-For the time to recover the cost:
+The method for estimating savings and payback is under review. No benchmark or threshold has been fixed. A candidate payback definition is:
 
 $$
 \text{Time to recover} = \frac{\text{estimated cost}}{\text{estimated yearly saving}}
@@ -293,6 +293,7 @@ A report can include:
 - Showing each building's share of the total cost
 - Recording problems and suggested fixes
 - Producing reports and downloads
+- Offline cache and sync
 - Ready-made demo data
 
 **Later:**
@@ -301,7 +302,7 @@ A report can include:
 
 **Not planned for now:**
 
-Smart meters, carbon accounting, weather correction, artificial intelligence, advanced financial models, approval workflows, email, offline use, solar systems, and a client portal.
+Smart meters, carbon accounting, weather correction, artificial intelligence, advanced financial models, approval workflows, email, solar systems, and a client portal.
 
 ## 9. One-minute talk track
 
