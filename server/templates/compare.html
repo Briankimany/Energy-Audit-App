@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Compare buildings · Energy Monitor{% endblock %}
+{% block content %}
+<section>
+  <div class="page-head">
+    <h1 class="page-title">Building comparison</h1>
+    <p class="page-subtitle">Compare buildings by EUI (annual kWh per m²). Buildings need 12 months of data for a complete EUI.</p>
+  </div>
+
+  <div class="card">
+    <div id="compare-loading">Loading&hellip;</div>
+    <div id="compare-warning" style="margin-bottom:16px; display:none;"></div>
+    <table class="data-table" id="compare-table" style="display:none;">
+      <thead>
+        <tr>
+          <th>Building</th><th>Type</th><th>Floor area (m²)</th><th>Total kWh</th><th>Total cost</th><th>EUI (kWh/m²/yr)</th><th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="compare-tbody"></tbody>
+    </table>
+    <p id="compare-empty" class="muted" style="display:none;">No building data available yet.</p>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const token = localStorage.getItem("energy_audit_token");
+const headers = token ? { Authorization: "Bearer " + token } : {};
+
+function esc(t){ return String(t).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[c])); }
+
+async function loadCompare(){
+  const res = await fetch("/api/analysis/compare", { headers });
+  const body = await res.json();
+  const loading = document.getElementById("compare-loading");
+  const table = document.getElementById("compare-table");
+  const tbody = document.getElementById("compare-tbody");
+  const empty = document.getElementById("compare-empty");
+  const warning = document.getElementById("compare-warning");
+  const data = body.data || {};
+  const comparisons = data.comparisons || [];
+  loading.style.display = "none";
+  if(comparisons.length === 0){ empty.style.display = "block"; return; }
+  table.style.display = "table";
+  if(data.warning){ warning.style.display = "block"; warning.textContent = data.warning; warning.style.color = "var(--color-amber)"; }
+  tbody.innerHTML = comparisons.map(c => `
+    <tr>
+      <td>${esc(c.name)}</td>
+      <td>${esc(c.type)}</td>
+      <td>${Number(c.floor_area_m2||0).toLocaleString()}</td>
+      <td>${Number(c.total_kwh||0).toLocaleString(undefined,{minimumFractionDigits:1})}</td>
+      <td>${Number(c.total_cost||0).toLocaleString(undefined,{minimumFractionDigits:2})}</td>
+      <td>${c.eui == null ? "Incomplete" : Number(c.eui).toFixed(2)}</td>
+      <td>${c.eui_note}</td>
+    </tr>
+  `).join("");
+}
+
+loadCompare();
+</script>
+{% endblock %}

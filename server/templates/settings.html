@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Settings · Energy Monitor{% endblock %}
+{% block content %}
+<section>
+  <div class="page-head">
+    <h1 class="page-title">Institution settings</h1>
+    <p class="page-subtitle" id="page-subtitle">Loading settings&hellip;</p>
+  </div>
+
+  <div class="card">
+    <h2 class="card-title">Institution details</h2>
+    <form id="settings-form" class="form" novalidate>
+      <div class="field">
+        <label class="field-label" for="name">Institution name</label>
+        <input class="input" id="name" name="name" type="text" required>
+      </div>
+      <div class="field">
+        <label class="field-label" for="currency">Currency</label>
+        <input class="input" id="currency" name="currency" type="text" maxlength="3" required>
+        <p class="muted small">3-letter currency code (e.g. USD, KES, EUR).</p>
+      </div>
+      <div class="field">
+        <label class="field-label" for="max_buildings">Maximum buildings</label>
+        <input class="input" id="max_buildings" name="max_buildings" type="number" min="1" max="50" required>
+        <p class="muted small">Cannot be lowered below your current building count.</p>
+      </div>
+      <div id="settings-error" class="form-error hidden"></div>
+      <button class="btn btn-primary" type="submit">Save settings</button>
+    </form>
+  </div>
+
+  <div class="card" style="margin-top:20px;">
+    <h2 class="card-title">Current values</h2>
+    <div id="settings-values">Loading&hellip;</div>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const token = localStorage.getItem("energy_audit_token");
+const headers = token ? { Authorization: "Bearer " + token } : {};
+
+function esc(t){ return String(t).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[c])); }
+
+async function loadSettings(){
+  const res = await fetch("/api/institution", { headers });
+  const body = await res.json();
+  const data = body.data || {};
+  document.getElementById("name").value = data.name || "";
+  document.getElementById("currency").value = data.currency || "";
+  document.getElementById("max_buildings").value = data.max_buildings || "";
+  document.getElementById("settings-values").innerHTML = `
+    <p><strong>Institution:</strong> ${esc(data.name || "—")}</p>
+    <p><strong>Currency:</strong> ${esc(data.currency || "—")}</p>
+    <p><strong>Max buildings:</strong> ${data.max_buildings || "—"}</p>
+  </div>;
+}
+
+async function saveSettings(e){
+  e.preventDefault();
+  document.getElementById("settings-error").classList.add("hidden");
+  const payload = {
+    name: document.getElementById("name").value.trim(),
+    currency: document.getElementById("currency").value.trim().toUpperCase(),
+    max_buildings: Number(document.getElementById("max_buildings").value),
+  };
+  const res = await fetch("/api/institution", { method:"PATCH", headers:{...headers,"Content-Type":"application/json"}, body: JSON.stringify(payload) });
+  const bdy = await res.json();
+  if(!res.ok){ document.getElementById("settings-error").textContent = bdy.message || "Failed to save"; document.getElementById("settings-error").classList.remove("hidden"); return; }
+  loadSettings();
+}
+
+document.getElementById("settings-form").addEventListener("submit", saveSettings);
+loadSettings();
+</script>
+{% endblock %}

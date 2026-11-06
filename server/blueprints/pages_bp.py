@@ -1,36 +1,43 @@
-from flask import Blueprint, redirect, render_template, request
-
-from server.repositories.user_repo import UserRepository
-from server.services.auth_service import decode_token
+from flask import Blueprint, render_template
 
 bp = Blueprint("pages", __name__)
 
 
-def _current_user():
-    header = request.headers.get("Authorization", "")
-    if not header.startswith("Bearer "):
-        return None
-    token = header[len("Bearer "):].strip()
-    payload = decode_token(token)
-    return UserRepository().find_by_id(int(payload["sub"]))
-
-
 @bp.get("/login")
 def login():
-    user = _current_user()
-    if user is not None:
-        return redirect("/dashboard")
     return render_template("login.html")
 
 
 @bp.get("/register")
 def register():
-    user = _current_user()
-    if user is not None:
-        return redirect("/dashboard")
     return render_template("register.html")
 
 
 @bp.get("/dashboard")
 def dashboard():
     return render_template("dashboard.html")
+
+
+@bp.get("/buildings")
+def buildings():
+    return render_template("buildings.html")
+
+
+@bp.get("/buildings/<int:building_id>/energy")
+def energy(building_id: int):
+    return render_template("energy_records.html", building_id=building_id)
+
+
+@bp.get("/users")
+def users():
+    return render_template("users.html")
+
+
+@bp.get("/settings")
+def settings():
+    return render_template("settings.html")
+
+
+@bp.get("/analysis/compare")
+def compare():
+    return render_template("compare.html")

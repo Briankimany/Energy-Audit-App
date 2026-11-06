@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Users · Energy Monitor{% endblock %}
+{% block content %}
+<section>
+  <div class="page-head">
+    <h1 class="page-title">Users</h1>
+    <p class="page-subtitle" id="page-subtitle">Loading users&hellip;</p>
+  </div>
+
+  <div class="card">
+    <h2 class="card-title">Add user</h2>
+    <form id="add-user-form" class="form" novalidate>
+      <div class="field">
+        <label class="field-label" for="name">Name</label>
+        <input class="input" id="name" name="name" type="text" required>
+      </div>
+      <div class="field">
+        <label class="field-label" for="email">Email</label>
+        <input class="input" id="email" name="email" type="email" autocomplete="email" required>
+      </div>
+      <div class="field">
+        <label class="field-label" for="password">Temporary password</label>
+        <input class="input" id="password" name="password" type="password" required>
+        <p class="muted small">The user must change it at first login.</p>
+      </div>
+      <div class="field">
+        <label class="field-label" for="role">Role</label>
+        <select class="input" id="role" name="role">
+          <option value="auditor">Auditor</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+      <div id="add-error" class="form-error hidden"></div>
+      <button class="btn btn-primary" type="submit">Add user</button>
+    </form>
+  </div>
+
+  <div class="card" style="margin-top:20px;">
+    <h2 class="card-title">Registered users</h2>
+    <div id="users-loading">Loading&hellip;</div>
+    <table class="data-table" id="users-table" style="display:none;">
+      <thead>
+        <tr><th>Name</th><th>Email</th><th>Role</th><th>Must change password</th><th>Actions</th></tr>
+      </thead>
+      <tbody id="users-tbody"></tbody>
+    </table>
+    <p id="users-empty" class="muted" style="display:none;">No users yet.</p>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const token = localStorage.getItem("energy_audit_token");
+const headers = token ? { Authorization: "Bearer " + token } : {};
+
+function esc(t){ return String(t).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[c])); }
+
+async function loadUsers(){
+  const res = await fetch("/api/users", { headers });
+  const body = await res.json();
+  const tbody = document.getElementById("users-tbody");
+  const loading = document.getElementById("users-loading");
+  const table = document.getElementById("users-table");
+  const empty = document.getElementById("users-empty");
+  const data = body.data || [];
+  loading.style.display = "none";
+  if(data.length === 0){ empty.style.display = "block"; return; }
+  table.style.display = "table";
+  tbody.innerHTML = data.map(u => `
+    <tr>
+      <td>${esc(u.name)}</td>
+      <td>${esc(u.email)}</td>
+      <td>${esc(u.role)}</td>
+      <td>${u.must_change_password ? "Yes" : "No"}</td>
+      <td>
+        <button class="btn btn-outline btn-sm" style="color:var(--color-red)" onclick="delUser(${u.id}, '${esc(u.name)}')">Delete</button>
+      </td>
+    </tr>
+  `).join("");
+}
+
+async function addUser(e){
+  e.preventDefault();
+  document.getElementById("add-error").classList.add("hidden");
+  const payload = {
+    name: document.getElementById("name").value.trim(),
+    email: document.getElementById("email").value.trim(),
+    password: document.getElementById("password").value,
+    role: document.getElementById("role").value,
+  };
+  const res = await fetch("/api/users", { method:"POST", headers:{...headers,"Content-Type":"application/json"}, body: JSON.stringify(payload) });
+  const bdy = await res.json();
+  if(!res.ok){ document.getElementById("add-error").textContent = bdy.message || "Failed to add user"; document.getElementById("add-error").classList.remove("hidden"); return; }
+  document.getElementById("add-user-form").reset();
+  loadUsers();
+}
+
+async function delUser(id, name){
+  if(!confirm(`Delete user "${name}"?`)) return;
+  const res = await fetch(`/api/users/${id}`, { method:"DELETE", headers });
+  if(res.ok) loadUsers();
+  else alert("Delete failed");
+}
+
+document.getElementById("add-user-form").addEventListener("submit", addUser);
+loadUsers();
+</script>
+{% endblock %}

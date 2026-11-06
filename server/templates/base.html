@@ -38,18 +38,19 @@
         {% block sidebar %}
         <div class="nav-group">
           <p class="nav-section">Overview</p>
-          <a class="nav-item active" href="{{ url_for('pages.dashboard') }}">Dashboard</a>
+          <a class="nav-item{% if request.endpoint == 'pages.dashboard' %} active{% endif %}" href="{{ url_for('pages.dashboard') }}">Dashboard</a>
+          {% if user %}
+            <a class="nav-item{% if request.endpoint == 'pages.users' %} active{% endif %}" href="{{ url_for('pages.users') }}">Users</a>
+            <a class="nav-item{% if request.endpoint == 'pages.settings' %} active{% endif %}" href="{{ url_for('pages.settings') }}">Settings</a>
+          {% endif %}
         </div>
         <div class="nav-group">
           <p class="nav-section">Monitoring</p>
-          <a class="nav-item" href="#">Energy</a>
-          <a class="nav-item" href="#">Appliances</a>
-          <a class="nav-item" href="#">Solar &amp; Battery</a>
-          <a class="nav-item" href="#">Indoor Air</a>
+          <a class="nav-item{% if request.endpoint == 'pages.buildings' %} active{% endif %}" href="{{ url_for('pages.buildings') }}">Buildings</a>
         </div>
         <div class="nav-group">
-          <p class="nav-section">Information</p>
-          <a class="nav-item" href="#">About</a>
+          <p class="nav-section">Analysis</p>
+          <a class="nav-item{% if request.endpoint == 'pages.compare' %} active{% endif %}" href="{{ url_for('pages.compare') }}">Compare</a>
         </div>
         {% endblock %}
       </nav>

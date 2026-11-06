@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+{% block title %}Energy Records · Energy Monitor{% endblock %}
+{% block content %}
+<section>
+  <div class="page-head">
+    <h1 class="page-title">Energy records</h1>
+    <p class="page-subtitle" id="page-subtitle">Select a building to view its records&hellip;</p>
+  </div>
+
+  <div class="card">
+    <h2 class="card-title">Select building</h2>
+    <div class="field" style="max-width:320px;">
+      <label class="field-label" for="building-select">Building</label>
+      <select class="input" id="building-select">
+        <option value="">-- Choose a building --</option>
+      </select>
+    </div>
+    <p id="building-empty" class="muted" style="display:none;">No buildings found. <a href="{{ url_for('pages.buildings') }}">Add one first</a>.</p>
+  </div>
+
+  <div id="energy-section" style="margin-top:24px; display:none;">
+    <div class="card">
+      <h2 class="card-title" id="energy-building-title">Energy records</h2>
+      <form id="add-record-form" class="form" novalidate>
+        <div class="field">
+          <label class="field-label" for="record-month">Month (YYYY-MM)</label>
+          <input class="input" id="record-month" name="month" type="month" required>
+        </div>
+        <div class="field">
+          <label class="field-label" for="record-kwh">kWh</label>
+          <input class="input" id="record-kwh" name="kwh" type="number" step="0.01" min="0" required>
+        </div>
+        <div class="field">
+          <label class="field-label" for="record-cost">Cost</label>
+          <input class="input" id="record-cost" name="cost" type="number" step="0.01" min="0" required>
+        </div>
+        <div id="record-error" class="form-error hidden"></div>
+        <button class="btn btn-primary" type="submit">Add record</button>
+      </form>
+    </div>
+
+    <div class="card" style="margin-top:20px;">
+      <h2 class="card-title">Import from CSV</h2>
+      <p class="muted small">CSV columns: month,kwh,cost. Rows are validated first; nothing is imported until you confirm.</p>
+      <form id="import-form" class="form" novalidate>
+        <div class="field">
+          <label class="field-label" for="import-csv">CSV text</label>
+          <textarea class="input" id="import-csv" name="csv" rows="4" placeholder="month,kwh,cost&#10;2025-01,1200,2400&#10;2025-02,1100,2200"></textarea>
+        </div>
+        <div class="field">
+          <label class="field-label" style="font-weight:500;">
+            <input type="checkbox" id="import-confirm" name="confirm"> I confirm I want to import the valid rows
+          </label>
+        </div>
+        <div id="import-error" class="form-error hidden"></div>
+        <div id="import-preview" style="margin-top:12px;"></div>
+        <button class="btn btn-primary" type="submit">Validate &amp; import</button>
+      </form>
+    </div>
+
+    <div class="card" style="margin-top:20px;">
+      <h2 class="card-title">Records</h2>
+      <div id="records-loading">Loading&hellip;</div>
+      <table class="data-table" id="records-table" style="display:none;">
+        <thead>
+          <tr><th>Month</th><th>kWh</th><th>Cost</th><th>Actions</th></tr>
+        </thead>
+        <tbody id="records-tbody"></tbody>
+      </table>
+      <p id="records-empty" class="muted" style="display:none;">No energy records yet. Add one above.</p>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const token = localStorage.getItem("energy_audit_token");
+const headers = token ? { Authorization: "Bearer " + token } : {};
+
+function esc(t){ return String(t).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[c])); }
+
+let currentBuildingId = null;
+
+async function loadBuildings(){
+  const res = await fetch("/api/buildings", { headers });
+  const body = await res.json();
+  const select = document.getElementById("building-select");
+  const empty = document.getElementById("building-empty");
+  const data = body.data || [];
+  select.innerHTML = '<option value="">-- Choose a building --</option>';
+  data.forEach(b => {
+    const o = document.createElement("option");
+    o.value = b.id;
+    o.textContent = esc(b.name);
+    select.appendChild(o);
+  });
+  if(data.length === 0){ empty.style.display = "block"; }
+}
+
+async function loadRecords(){
+  if(!currentBuildingId) return;
+  const res = await fetch(`/api/buildings/${currentBuildingId}/energy`, { headers });
+  const body = await res.json();
+  const tbody = document.getElementById("records-tbody");
+  const loading = document.getElementById("records-loading");
+  const table = document.getElementById("records-table");
+  const empty = document.getElementById("records-empty");
+  const data = body.data || [];
+  loading.style.display = "none";
+  if(data.length === 0){ empty.style.display = "block"; return; }
+  table.style.display = "table";
+  tbody.innerHTML = data.map(r => `
+    <tr>
+      <td>${esc(r.month)}</td>
+      <td>${Number(r.kwh||0).toLocaleString(undefined,{minimumFractionDigits:2})}</td>
+      <td>${Number(r.cost||0).toLocaleString(undefined,{minimumFractionDigits:2})}</td>
+      <td>
+        <button class="btn btn-outline btn-sm" style="color:var(--color-red)" onclick="delRecord(${r.id}, '${esc(r.month)}')">Delete</button>
+      </td>
+    </tr>
+  `).join("");
+}
+
+async function addRecord(e){
+  e.preventDefault();
+  document.getElementById("record-error").classList.add("hidden");
+  const payload = {
+    month: document.getElementById("record-month").value,
+    kwh: Number(document.getElementById("record-kwh").value),
+    cost: Number(document.getElementById("record-cost").value),
+  };
+  const res = await fetch(`/api/buildings/${currentBuildingId}/energy`, { method:"POST", headers:{...headers,"Content-Type":"application/json"}, body: JSON.stringify(payload) });
+  const bdy = await res.json();
+  if(!res.ok){ document.getElementById("record-error").textContent = bdy.message || "Failed to add record"; document.getElementById("record-error").classList.remove("hidden"); return; }
+  document.getElementById("add-record-form").reset();
+  loadRecords();
+}
+
+async function delRecord(id, month){
+  if(!confirm(`Delete record for ${esc(month)}?`)) return;
+  const res = await fetch(`/api/buildings/${currentBuildingId}/energy/${id}`, { method:"DELETE", headers });
+  if(res.ok) loadRecords();
+  else alert("Delete failed");
+}
+
+async function importCsv(e){
+  e.preventDefault();
+  document.getElementById("import-error").classList.add("hidden");
+  document.getElementById("import-preview").innerHTML = "";
+  const csv = document.getElementById("import-csv").value;
+  const confirm = document.getElementById("import-confirm").checked;
+  const res = await fetch(`/api/buildings/${currentBuildingId}/energy/import`, { method:"POST", headers:{...headers,"Content-Type":"application/json"}, body: JSON.stringify({ csv, confirm }) });
+  const bdy = await res.json();
+  if(!res.ok){ document.getElementById("import-error").textContent = bdy.message || "Import failed"; document.getElementById("import-error").classList.remove("hidden"); return; }
+  const d = bdy.data || {};
+  let html = `<p><strong>Valid rows:</strong> ${d.valid_rows || 0} &nbsp;|&nbsp; <strong>Imported:</strong> ${d.imported || 0}</p>`;
+  if(d.errors && d.errors.length){
+    html += "<p><strong>Errors (skipped):</strong></p><ul>";
+    d.errors.forEach(err => { html += `<li>Row ${err.row}: ${esc(err.message)}</li>`; });
+    html += "</ul>";
+  }
+  if(d.errors && d.errors.length && !confirm){
+    html += `<p class="muted">Set "I confirm" above and retry to import the valid rows.</p>`;
+  }
+  document.getElementById("import-preview").innerHTML = html;
+  if(d.imported && d.imported > 0) loadRecords();
+}
+
+document.getElementById("building-select").addEventListener("change", (e) => {
+  currentBuildingId = e.target.value ? Number(e.target.value) : null;
+  document.getElementById("energy-section").style.display = currentBuildingId ? "block" : "none";
+  if(currentBuildingId){
+    document.getElementById("energy-building-title").textContent = `Energy records &ndash; ${document.getElementById("building-select").selectedOptions[0].text}`;
+    loadRecords();
+  }
+});
+
+document.getElementById("add-record-form").addEventListener("submit", addRecord);
+document.getElementById("import-form").addEventListener("submit", importCsv);
+
+loadBuildings();
+</script>
+{% endblock %}

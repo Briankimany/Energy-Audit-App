@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+{% block title %}Buildings · Energy Monitor{% endblock %}
+{% block content %}
+<section>
+  <div class="page-head">
+    <h1 class="page-title">Buildings</h1>
+    <p class="page-subtitle" id="page-subtitle">Loading buildings&hellip;</p>
+  </div>
+
+  <div class="card">
+    <h2 class="card-title">Add building</h2>
+    <form id="add-building-form" class="form" novalidate>
+      <div class="field">
+        <label class="field-label" for="name">Name</label>
+        <input class="input" id="name" name="name" type="text" required>
+      </div>
+      <div class="field">
+        <label class="field-label" for="type">Type</label>
+        <select class="input" id="type" name="type">
+          <option value="office">Office</option>
+          <option value="retail">Retail</option>
+          <option value="warehouse">Warehouse</option>
+          <option value="factory">Factory</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <div class="field">
+        <label class="field-label" for="floor_area_m2">Floor area (m²)</label>
+        <input class="input" id="floor_area_m2" name="floor_area_m2" type="number" step="0.01" min="0" required>
+      </div>
+      <div class="field">
+        <label class="field-label" for="operating_hours">Operating hours/day</label>
+        <input class="input" id="operating_hours" name="operating_hours" type="number" step="1" min="1" max="24" required>
+      </div>
+      <div id="add-error" class="form-error hidden"></div>
+      <button class="btn btn-primary" type="submit">Add building</button>
+    </form>
+  </div>
+
+  <div class="card" style="margin-top:20px;">
+    <h2 class="card-title">Your buildings</h2>
+    <div id="buildings-loading">Loading&hellip;</div>
+    <table class="data-table" id="buildings-table" style="display:none;">
+      <thead>
+        <tr><th>Name</th><th>Type</th><th>Floor area (m²)</th><th>Operating hours</th><th>Actions</th></tr>
+      </thead>
+      <tbody id="buildings-tbody"></tbody>
+    </table>
+    <p id="buildings-empty" class="muted" style="display:none;">No buildings yet. Add one above.</p>
+  </div>
+
+  <div id="edit-section" style="margin-top:20px; display:none;">
+    <div class="card">
+      <h2 class="card-title">Edit building</h2>
+      <form id="edit-building-form" class="form" novalidate>
+        <input type="hidden" id="edit-building-id">
+        <div class="field">
+          <label class="field-label" for="edit-name">Name</label>
+          <input class="input" id="edit-name" name="name" type="text" required>
+        </div>
+        <div class="field">
+          <label class="field-label" for="edit-type">Type</label>
+          <select class="input" id="edit-type" name="type">
+            <option value="office">Office</option>
+            <option value="retail">Retail</option>
+            <option value="warehouse">Warehouse</option>
+            <option value="factory">Factory</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="field-label" for="edit-floor_area_m2">Floor area (m²)</label>
+          <input class="input" id="edit-floor_area_m2" name="floor_area_m2" type="number" step="0.01" min="0" required>
+        </div>
+        <div class="field">
+          <label class="field-label" for="edit-operating_hours">Operating hours/day</label>
+          <input class="input" id="edit-operating_hours" name="operating_hours" type="number" step="1" min="1" max="24" required>
+        </div>
+        <div id="edit-error" class="form-error hidden"></div>
+        <button class="btn btn-primary" type="submit">Save changes</button>
+        <button type="button" class="btn btn-outline" id="cancel-edit">Cancel</button>
+      </form>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const token = localStorage.getItem("energy_audit_token");
+const headers = token ? { Authorization: "Bearer " + token } : {};
+
+function esc(t){ return String(t).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[c])); }
+
+async function loadBuildings(){
+  const res = await fetch("/api/buildings", { headers });
+  const body = await res.json();
+  const tbody = document.getElementById("buildings-tbody");
+  const loading = document.getElementById("buildings-loading");
+  const table = document.getElementById("buildings-table");
+  const empty = document.getElementById("buildings-empty");
+  const data = body.data || [];
+  loading.style.display = "none";
+  if(data.length === 0){ empty.style.display = "block"; return; }
+  table.style.display = "table";
+  tbody.innerHTML = data.map(b => `
+    <tr>
+      <td>${esc(b.name)}</td>
+      <td>${esc(b.type)}</td>
+      <td>${Number(b.floor_area_m2||0).toLocaleString(undefined,{minimumFractionDigits:2})}</td>
+      <td>${b.operating_hours}</td>
+      <td>
+        <button class="btn btn-outline btn-sm" onclick="openEdit(${b.id}, '${esc(b.name)}', '${esc(b.type)}', ${b.floor_area_m2||0}, ${b.operating_hours||0})">Edit</button>
+        <button class="btn btn-outline btn-sm" style="color:var(--color-red)" onclick="delBuilding(${b.id}, '${esc(b.name)}')">Delete</button>
+        <a class="btn btn-outline btn-sm" href="/buildings/${b.id}/energy">View energy</a>
+      </td>
+    </tr>
+  `).join("");
+}
+
+async function addBuilding(e){
+  e.preventDefault();
+  document.getElementById("add-error").classList.add("hidden");
+  const payload = {
+    name: document.getElementById("name").value.trim(),
+    type: document.getElementById("type").value,
+    floor_area_m2: Number(document.getElementById("floor_area_m2").value),
+    operating_hours: Number(document.getElementById("operating_hours").value),
+  };
+  const res = await fetch("/api/buildings", { method:"POST", headers:{...headers,"Content-Type":"application/json"}, body: JSON.stringify(payload) });
+  const bdy = await res.json();
+  if(!res.ok){ document.getElementById("add-error").textContent = bdy.message || "Failed to add building"; document.getElementById("add-error").classList.remove("hidden"); return; }
+  document.getElementById("add-building-form").reset();
+  loadBuildings();
+}
+
+function openEdit(id, name, type, floor, hours){
+  document.getElementById("edit-building-id").value = id;
+  document.getElementById("edit-name").value = name;
+  document.getElementById("edit-type").value = type;
+  document.getElementById("edit-floor_area_m2").value = floor;
+  document.getElementById("edit-operating_hours").value = hours;
+  document.getElementById("edit-section").style.display = "block";
+  document.getElementById("edit-section").scrollIntoView({behavior:"smooth"});
+}
+
+async function saveEdit(e){
+  e.preventDefault();
+  document.getElementById("edit-error").classList.add("hidden");
+  const id = document.getElementById("edit-building-id").value;
+  const payload = {
+    name: document.getElementById("edit-name").value.trim(),
+    type: document.getElementById("edit-type").value,
+    floor_area_m2: Number(document.getElementById("edit-floor_area_m2").value),
+    operating_hours: Number(document.getElementById("edit-operating_hours").value),
+  };
+  const res = await fetch(`/api/buildings/${id}`, { method:"PATCH", headers:{...headers,"Content-Type":"application/json"}, body: JSON.stringify(payload) });
+  const bdy = await res.json();
+  if(!res.ok){ document.getElementById("edit-error").textContent = bdy.message || "Failed to update"; document.getElementById("edit-error").classList.remove("hidden"); return; }
+  closeEdit();
+  loadBuildings();
+}
+
+async function delBuilding(id, name){
+  if(!confirm(`Delete building "${name}"? This cannot be undone.`)) return;
+  const res = await fetch(`/api/buildings/${id}`, { method:"DELETE", headers });
+  if(res.ok) loadBuildings();
+  else alert("Delete failed");
+}
+
+function closeEdit(){
+  document.getElementById("edit-section").style.display = "none";
+}
+
+document.getElementById("cancel-edit").addEventListener("click", closeEdit);
+document.getElementById("add-building-form").addEventListener("submit", addBuilding);
+document.getElementById("edit-building-form").addEventListener("submit", saveEdit);
+
+loadBuildings();
+</script>
+{% endblock %}
