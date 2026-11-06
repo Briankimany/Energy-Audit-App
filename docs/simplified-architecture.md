@@ -1,254 +1,265 @@
-# Simplified Architecture — Energy Audit App
+# Simplified Architecture — plain-English version
 
-> **One-sentence version:** The app records the energy a building uses, breaks it down by floor and equipment, rolls it up to a building and then to the whole institution, and turns that into cost, EUI, anomalies, recommendations, and reports.
+> In one sentence: The app records how much electricity a building uses, explains where it goes, adds it up for the whole organisation, and turns it into costs, problems, savings, and reports.
 
-Related docs: [Full architecture](architecture.md) · [API reference](api.md) · [Formulas](formulas.md) · [What has been built](what-has-been-built.md)
+This version is written to be read aloud. It uses everyday words. It covers what is working today and what is still planned.
 
-This is the simplified, presentation-friendly version. It includes the full target design, even where features are not implemented yet. The status column shows what is already working.
+## 1. The big idea
 
-## 1. Big picture
+A building uses electricity in many places: lights, fans, air conditioners, pumps, doors, computers, and other equipment. The app records each device and works out how much electricity it uses in a year. It then adds the devices up for a floor, the floors up for a building, and the buildings up for the whole organisation (called an institution in the app).
 
-The core chain is:
+At the same time, the app records the monthly electricity bills. The bills show what the building actually used and paid. The equipment list shows why the building used that electricity. When the two do not match, the difference is the gap — and that gap tells us what to investigate.
+
+The chain is simple:
 
 ```text
-Equipment → floor → building → institution → findings → reports
+Equipment → floor → building → organisation → problems → reports
 ```
 
-A building starts with real equipment: lights, fans, HVAC units, electric doors, pumps, ICT equipment, and other loads. The system calculates each item’s annual energy use, rolls it up to a floor, multiplies repeated floors, adds special floors individually, and then combines the result with monthly utility bills.
+## 2. The flow
 
 ```mermaid
-flowchart TD
-    E["Equipment item<br/>category · rating W · qty · hours/day · days/year"] --> EC["Equipment annual kWh<br/>rating × qty × hours × days ÷ 1000"]
-    EC --> F["Floor subtotal"]
-    F --> B["Building inventory<br/>kWh and cost estimate"]
-    H["Monthly billed energy<br/>kWh and cost"] --> A["Actual building<br/>annual kWh and cost"]
-    B --> J["Building analysis<br/>EUI · anomalies · end-use · reconciliation"]
-    A --> J
-    J --> P["Portfolio aggregator<br/>institution totals and building cost share"]
-    P --> L["Findings and recommendations"]
-    L --> M["Reports and exports"]
+flowchart LR
+    E["Equipment<br/>lights, fans, air conditioners, pumps"] --> F["Device total"]
+    F --> FL["Floor total"]
+    FL --> B["Building total"]
+    B --> I["Whole organisation<br/>all buildings"]
+    H["Monthly bills"] --> A["Actual building use"]
+    A --> C["Compare bills<br/>with equipment estimate"]
+    B --> C
+    C --> P["Problems and savings"]
+    I --> P
+    P --> R["Reports"]
 ```
 
-## 2. Feature map: current and planned state
+Read it left to right:
 
-| Module | What it does | Status |
+- The equipment side builds the number from the devices up.
+- The bill side starts from what was actually used and paid.
+- The comparison shows whether the two agree.
+- The problems and reports turn the numbers into action.
+
+## 3. How a building is set up
+
+A building has floors. Floors are of two kinds:
+
+| Floor type | How it is entered | Example |
 |---|---|---|
-| Accounts and access | Institution sign-up, login, JWT bearer sessions, admin and auditor roles, forced password change | Implemented |
-| Institution settings | Name, currency, standard electricity rate, maximum buildings | Implemented |
-| Buildings | Create, edit, delete, limit enforcement, floor area, operating hours | Implemented |
-| Monthly energy records | kWh and cost per month, CSV import, validation, confirmation, automatic KSh cost from standard rate | Implemented |
-| Per-building analysis | Annual kWh and cost, EUI, monthly series, anomaly detection, coverage labels | Implemented |
-| Portfolio dashboard | Institution totals, monthly chart, anomalies, building performance table | Implemented |
-| Building comparison | EUI comparison, fairness warning when building types differ | Implemented |
-| Floors | Typical-floor templates, special floors, floor areas, floor counts | Planned |
-| Equipment inventory | Equipment by floor, category, rating, quantity, hours/day, days/year | Planned |
-| Equipment calculations | Equipment kWh, floor subtotals, building inventory, end-use shares | Planned |
-| Reconciliation | Compare billed kWh with inventory kWh, show gap | Planned |
-| Building cost contribution | Show how each building contributes to institution cost | Planned |
-| Audit findings | Checklist areas, problem, location, improvement, priority, optional photo | Planned |
-| Recommendations | Measures library, estimated cost, estimated saving, payback, status, estimate label | Planned |
-| Reports and exports | Building report preview, PDF/print, JSON/CSV export | Planned |
-| Demo seed data | Demo institutions, buildings, energy records, equipment, findings, recommendations | Planned |
-| Platform super-admin | Manage institutions across tenants, support access, platform reporting | Future |
+| Typical floor | Enter it once, then say how many identical floors there are | Four identical office floors |
+| Special floor | Enter each one separately | Basement, server room, kitchen, parking, reception |
 
-Status meanings: **Implemented**, **Planned**, or **Future**.
-
-## 3. Two data streams
-
-| Stream | Source | Question it answers |
-|---|---|---|
-| Billed energy | Monthly utility records or CSV import: month, kWh, cost | How much did the building actually consume and cost? |
-| Equipment inventory | Floor and equipment entries: rating, quantity, hours, days | Where is the energy going, and what can be improved? |
-
-The equipment stream is bottom-up. The billed stream is top-down. Their difference is the reconciliation gap.
-
-## 4. Floor model, calculations, and worked example
-
-### 4.1 Floor types
-
-| Floor type | Entry method | Multiply by floor count? |
-|---|---|---|
-| Typical floor | One template representing identical floors, e.g. “Typical office floor” | Yes |
-| Special floor | Entered individually, e.g. Basement, Server room, Kitchen, Parking | No |
-
-Core rule: enter equipment once for a typical floor, multiply by the number of identical floors, and enter special floors separately.
+The rule is simple: enter the repeated floor once and multiply it. Enter special floors one by one.
 
 ```mermaid
-flowchart TD
-    B["Building: 5-storey office"] --> T["Typical office floor template<br/>typical_count = 4"]
-    B --> S1["Special floor: Basement<br/>count = 1"]
-    B --> S2["Special floor: Server room<br/>count = 1"]
-    T --> T1["Lighting<br/>20 × 18 W"]
-    T --> T2["Fans<br/>6 × 60 W"]
-    T --> T3["HVAC<br/>2 × 1500 W"]
-    T --> T4["Electric doors<br/>1 × 200 W"]
-    S1 --> S11["Lighting<br/>10 × 18 W"]
-    S1 --> S12["Pumps<br/>2 × 750 W"]
-    S2 --> S21["ICT equipment<br/>4 × 300 W"]
+flowchart LR
+    B["Five-storey office"] --> T["Four identical office floors"]
+    B --> S1["Basement"]
+    B --> S2["Server room"]
+    T --> T1["20 lights<br/>6 fans<br/>2 air conditioners<br/>1 electric door"]
+    S1 --> S11["10 lights<br/>2 pumps"]
+    S2 --> S21["4 computers and servers"]
 ```
 
-Equipment model:
+The app also stores the building's name, type, floor area, and opening hours.
 
-| Entity | Key fields |
-|---|---|
-| Floor | Name, floor_type, typical_count, area_m2 |
-| Equipment | Category, name, rating_w, qty, hours_day, days_year |
+For each device, the app needs five simple facts:
 
-Floor workflow:
+1. What it is — for example, a light or a fan
+2. Its power rating in watts
+3. How many there are
+4. How many hours a day it runs
+5. How many days a year it runs
 
-1. Create building: name, type, floor area, floor count, operating hours.
-2. Add typical floor templates and set `typical_count`.
-3. Add special floors individually.
-4. Add equipment to each typical template and special floor.
-5. Enter or import monthly bills.
-6. Combine equipment and billed data in building analysis.
-7. Aggregate buildings for institution.
+Watts tell us how much power the device draws when it is switched on.
 
-### 4.2 Calculations and worked example
+## 4. How the numbers are worked out
 
-| Formula | Output |
-|---|---|
-| Equipment annual kWh | `rating_w × qty × hours_day × days_year ÷ 1000` |
-| Equipment annual cost | `annual_kwh × standard_cost_per_kwh` |
-| Typical floor kWh | Sum of equipment in template |
-| Typical floor contribution | `template kWh × typical_count` |
-| Special floor kWh | Sum of equipment on that floor |
-| Building inventory kWh | Sum of typical contributions + special floors |
-| Reconciliation gap | `(billed kWh − inventory kWh) ÷ billed kWh × 100` |
-| Building cost contribution | `building total cost ÷ institution total cost × 100` |
+For one device:
 
-Worked example: five-storey office with four typical office floors and one basement.
+```text
+watts × how many × hours a day × days a year ÷ 1,000 = kWh a year
+```
 
-| Location | Equipment | Annual kWh |
+kWh is just a unit of electricity. A 1,000-watt device running for one hour uses 1 kWh.
+
+For a typical floor:
+
+```text
+floor total = add up all the devices on that floor
+floor contribution = floor total × number of identical floors
+```
+
+For the building:
+
+```text
+building total = all typical floor contributions + all special floors
+```
+
+For cost:
+
+```text
+cost = kWh × price per kWh
+```
+
+### Worked example
+
+A five-storey office has four identical office floors and one basement.
+
+| Where | What is there | Yearly electricity |
 |---|---|---:|
-| Typical office floor | 20 lights, 18 W, 10 h/day, 250 days | 900.0 |
-| Typical office floor | 6 fans, 60 W, 8 h/day, 250 days | 720.0 |
-| Typical office floor | 2 HVAC units, 1500 W, 6 h/day, 250 days | 4,500.0 |
-| Typical office floor | 1 electric door, 200 W, 2 h/day, 250 days | 100.0 |
-| Basement | 10 lights, 18 W, 12 h/day, 365 days | 788.4 |
-| Basement | 2 pumps, 750 W, 4 h/day, 365 days | 2,190.0 |
+| One office floor | 20 lights, 18 W, 10 hours a day, 250 days | 900.0 kWh |
+| One office floor | 6 fans, 60 W, 8 hours a day, 250 days | 720.0 kWh |
+| One office floor | 2 air conditioners, 1,500 W, 6 hours a day, 250 days | 4,500.0 kWh |
+| One office floor | 1 electric door, 200 W, 2 hours a day, 250 days | 100.0 kWh |
+| Basement | 10 lights, 18 W, 12 hours a day, 365 days | 788.4 kWh |
+| Basement | 2 pumps, 750 W, 4 hours a day, 365 days | 2,190.0 kWh |
+
+Then:
 
 ```text
-Typical template = 900 + 720 + 4,500 + 100 = 6,220 kWh
-Four floors     = 6,220 × 4 = 24,880 kWh
-Basement        = 788.4 + 2,190 = 2,978.4 kWh
-Building total  = 27,858.4 kWh
-Inventory cost  = 27,858.4 × 21.84 = KSh 608,427.46
+One office floor = 900 + 720 + 4,500 + 100 = 6,220 kWh
+Four office floors = 6,220 × 4 = 24,880 kWh
+Basement = 788.4 + 2,190 = 2,978.4 kWh
+Building total = 24,880 + 2,978.4 = 27,858.4 kWh
+Cost at KSh 21.84 per kWh = 27,858.4 × 21.84 = KSh 608,427.46
 ```
 
-If billed kWh is 31,000:
+If the bills add up to 31,000 kWh, the equipment list explains 27,858.4 kWh. The difference is:
 
 ```text
-Reconciliation gap = (31,000 − 27,858.4) ÷ 31,000 × 100 = 10.1%
+31,000 − 27,858.4 = 3,141.6 kWh
+3,141.6 ÷ 31,000 × 100 = 10.1%
 ```
 
-End-use shares:
+So the equipment explains about 90% of the bill. The remaining 10% is the gap to investigate. It could be equipment that was missed, a billing problem, shared areas, or a change in use.
 
-| Category | Annual kWh | Share |
+Where the electricity goes:
+
+| Type of equipment | Yearly electricity | Share of total |
 |---|---:|---:|
-| Lighting | 4,388.4 | 15.8% |
-| Fans | 2,880.0 | 10.3% |
-| HVAC | 18,000.0 | 64.6% |
-| Electric doors | 400.0 | 1.4% |
-| Pumps | 2,190.0 | 7.9% |
-| **Total** | **27,858.4** | **100%** |
+| Lights | 4,388.4 kWh | 15.8% |
+| Fans | 2,880.0 kWh | 10.3% |
+| Air conditioners | 18,000.0 kWh | 64.6% |
+| Electric doors | 400.0 kWh | 1.4% |
+| Pumps | 2,190.0 kWh | 7.9% |
+| **Total** | **27,858.4 kWh** | **100%** |
 
-Building cost contribution:
-
-```text
-Building A = KSh 608,427.46 → 60.3% of institution cost
-Building B = KSh 400,000.00 → 39.7% of institution cost
-Institution total = KSh 1,008,427.46
-```
-
-## 5. Stage outputs
-
-| Stage | Input | Processing block | Output |
-|---|---|---|---|
-| 1 | Equipment input | Normalise and validate | Per-item kWh/cost |
-| 2 | Item outputs + floor | Floor Rollup Engine | Per-floor kWh/cost |
-| 3 | Floor outputs | Building Rollup Engine | Building inventory |
-| 4 | Monthly bills | Energy Analysis Engine | Actual building kWh/cost, EUI, anomalies |
-| 5 | Billed vs inventory | Reconciliation Engine | Gap, warning |
-| 6 | Both streams | Building Analysis Layer | Building result |
-| 7 | All buildings | Portfolio Aggregator | Institution totals, building cost share, comparison |
-| 8 | Findings + baseline | Recommendation Engine | Savings, payback, status |
-| 9 | All previous outputs | Report Builder | PDF/print, JSON/CSV export |
-
-The key block is the **Portfolio Aggregator**: it turns building results into institution-level totals and cost contributions.
-
-## 6. Building analysis and portfolio layer
-
-Building analysis returns:
-
-- Actual recorded kWh and cost
-- Monthly series
-- EUI and coverage
-- Anomalies
-- Inventory kWh and cost estimate
-- End-use breakdown
-- Floor summary
-- Reconciliation gap
-- Building cost contribution
-
-Portfolio output:
-
-- Institution total kWh and cost
-- Building count and anomaly count
-- Monthly chart
-- Building performance table
-- EUI comparison and fairness warning
-
-## 7. Findings, recommendations, reports
-
-Findings areas: lighting, AC/ventilation, motors/pumps, operating hours, practices.
-
-Recommendations use measures library, estimated cost, estimated annual saving, payback, status, estimate label.
+If the building is 2,000 square metres, the yearly use is:
 
 ```text
-Simple payback = estimated cost ÷ estimated annual saving
-Cost = 0        → Immediate
-Saving = 0      → Not applicable
-Never divide by zero.
+27,858.4 ÷ 2,000 = 13.9 kWh per square metre
 ```
 
-Report sections: building profile, consumption and cost summary, EUI and trend, end-use/reconciliation, findings, recommendations, conclusion, PDF/print, JSON/CSV export.
+This lets us compare buildings of different sizes.
 
-## 8. Roles, security, API
+## 5. What the app shows
 
-| Role | Scope |
+### For one building
+
+- Yearly electricity use and cost
+- A month-by-month graph
+- Unusual months that need a look
+- Energy use per square metre
+- The equipment breakdown
+- The gap between the equipment estimate and the bills
+
+### For all buildings
+
+- Total use and cost for the organisation
+- The biggest users
+- A month-by-month graph
+- Buildings with unusual months
+- How each building contributes to the total cost
+- A side-by-side comparison, with a warning if the buildings are too different to compare fairly
+
+## 6. Problems, fixes, and reports
+
+An auditor can record problems in five areas: lighting, cooling and ventilation, motors and pumps, operating hours, and day-to-day practices.
+
+Each problem can have:
+
+- Where it is
+- What the problem is
+- How to fix it
+- How urgent it is
+- An optional photo
+
+Each suggested fix can have:
+
+- The estimated cost
+- The estimated yearly saving
+- How long it takes to recover the cost
+- Whether it is proposed, approved, or done
+- A note saying whether the estimate is rough or detailed
+
+For the time to recover the cost:
+
+```text
+time to recover = estimated cost ÷ estimated yearly saving
+```
+
+If the cost is zero, the fix is immediate. If the saving is zero, the calculation does not apply. We never divide by zero.
+
+A report can include:
+
+- The building profile
+- The bill summary
+- The trend
+- The equipment breakdown
+- The gap
+- The problems found
+- The suggested fixes
+- A conclusion
+- A print or PDF version
+- A downloadable data file
+
+## 7. Who uses it
+
+| Type of user | What they can do |
 |---|---|
-| Admin | Institution settings, users, buildings, energy, equipment, audits, recommendations, reports |
-| Auditor | Buildings, energy, equipment, audits, recommendations, reports |
-| Platform super-admin | Future: manage institutions across tenants |
+| Admin | Set up the organisation, add users, and manage all buildings, bills, equipment, problems, fixes, and reports |
+| Auditor | Enter buildings, bills, equipment, audits, and fixes, and produce reports |
+| Platform owner | Later: manage all organisations on the platform |
 
-Security: JWT contains user, institution, role; institution always from token; cross-tenant access returns 404.
+## 8. What is ready and what comes next
 
-API areas: auth, institution/users, buildings, energy, analysis/dashboard, equipment/reconciliation, findings, recommendations/measures, reports/exports. More detail lives in [API reference](api.md).
+**Ready now:**
 
-## 9. Suggested presentation flow
+- Signing up and logging in
+- Organisation settings, including the electricity price
+- Adding and editing buildings
+- Entering monthly bills by hand or from a spreadsheet
+- Automatic cost calculation
+- One-building summary
+- Overview page for all buildings
+- Comparing buildings
+- 81 checks passing
 
-| Slide | Diagram or example | Message |
-|---|---|---|
-| 1 | One-sentence version | We record energy, explain where it goes, turn it into decisions |
-| 2 | Full data chain | Equipment to floor to building to institution to report |
-| 3 | Two streams | Bills tell us what happened; equipment tells us why |
-| 4 | Floor model | Typical floor multiplied; special floors separately |
-| 5 | Worked example | 27,858.4 kWh, KSh 608,427.46, 10.1% reconciliation gap |
-| 6 | Building analysis | Cost, EUI, anomalies, end-use, reconciliation |
-| 7 | Portfolio | Institution totals and building cost contribution |
-| 8 | Findings/reports | Recommendations, payback, reports |
+**Coming next:**
 
-## 10. Current status and out of scope
+- Adding floors and equipment
+- Comparing the equipment estimate with the bills
+- Showing each building's share of the total cost
+- Recording problems and suggested fixes
+- Producing reports and downloads
+- Ready-made demo data
 
-Current: accounts, settings, buildings, energy records, analysis, dashboard, comparison, 81 tests.
+**Later:**
 
-Planned: floors, equipment, reconciliation, cost contribution, findings, recommendations, reports/exports, seed.
+- A platform owner who can manage all organisations
 
-Future: platform super-admin.
+**Not planned for now:**
 
-Out of scope: smart-meter integrations, carbon accounting, weather normalization, AI, NPV/IRR, approvals, email, offline, solar, client portal.
+Smart meters, carbon accounting, weather correction, artificial intelligence, advanced financial models, approval workflows, email, offline use, solar systems, and a client portal.
 
-## 11. Recommended presentation note
+## 9. One-minute talk track
 
-> “The lower half of the chain is working. The upper half is designed and ready to build.”
+> Let me explain the app in one minute. A building uses electricity in many places: lights, fans, air conditioners, pumps, doors, and computers. Our app records each device and works out how much electricity it uses in a year. It adds the devices up for a floor, the floors up for a building, and the buildings up for the whole organisation.
+>
+> At the same time, the app records the monthly electricity bills. The bills tell us what actually happened. The equipment list tells us why it happened. When the two do not match, the app shows the gap, so we know where to look.
+>
+> The app then shows the cost, the energy used per square metre, unusual months, and which equipment uses the most. It can compare buildings, record problems, suggest fixes, and produce a report.
+>
+> Today, the building, bill, dashboard, and comparison parts are working. Floors, equipment, problem tracking, suggested fixes, and reports are designed and are the next step.
+
+For the technical version, see [Full architecture](architecture.md).
