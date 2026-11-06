@@ -12,9 +12,7 @@ At the same time, the app records the monthly electricity bills. The bills show 
 
 The chain is simple:
 
-```text
-Equipment → floor → building → organisation → problems → reports
-```
+**Equipment → floor → building → organisation → problems → reports**
 
 ## 2. The flow
 
@@ -76,30 +74,32 @@ Watts tell us how much power the device draws when it is switched on.
 
 For one device:
 
-```text
-watts × how many × hours a day × days a year ÷ 1,000 = kWh a year
-```
+$$
+\text{Yearly kWh} = \frac{\text{watts} \times \text{quantity} \times \text{hours per day} \times \text{days per year}}{1000}
+$$
 
 kWh is just a unit of electricity. A 1,000-watt device running for one hour uses 1 kWh.
 
 For a typical floor:
 
-```text
-floor total = add up all the devices on that floor
-floor contribution = floor total × number of identical floors
-```
+$$
+\begin{aligned}
+\text{Floor total} &= \sum \text{device kWh on the floor} \\
+\text{Floor contribution} &= \text{Floor total} \times \text{number of identical floors}
+\end{aligned}
+$$
 
 For the building:
 
-```text
-building total = all typical floor contributions + all special floors
-```
+$$
+\text{Building total} = \sum \text{typical floor contributions} + \sum \text{special floor kWh}
+$$
 
 For cost:
 
-```text
-cost = kWh × price per kWh
-```
+$$
+\text{Cost} = \text{kWh} \times \text{price per kWh}
+$$
 
 ### Worked example
 
@@ -116,20 +116,24 @@ A five-storey office has four identical office floors and one basement.
 
 Then:
 
-```text
-One office floor = 900 + 720 + 4,500 + 100 = 6,220 kWh
-Four office floors = 6,220 × 4 = 24,880 kWh
-Basement = 788.4 + 2,190 = 2,978.4 kWh
-Building total = 24,880 + 2,978.4 = 27,858.4 kWh
-Cost at KSh 21.84 per kWh = 27,858.4 × 21.84 = KSh 608,427.46
-```
+$$
+\begin{aligned}
+\text{One office floor} &= 900 + 720 + 4{,}500 + 100 = 6{,}220 \text{ kWh} \\
+\text{Four office floors} &= 6{,}220 \times 4 = 24{,}880 \text{ kWh} \\
+\text{Basement} &= 788.4 + 2{,}190 = 2{,}978.4 \text{ kWh} \\
+\text{Building total} &= 24{,}880 + 2{,}978.4 = 27{,}858.4 \text{ kWh} \\
+\text{Cost at KSh } 21.84 \text{ per kWh} &= 27{,}858.4 \times 21.84 = \text{KSh } 608{,}427.46
+\end{aligned}
+$$
 
 If the bills add up to 31,000 kWh, the equipment list explains 27,858.4 kWh. The difference is:
 
-```text
-31,000 − 27,858.4 = 3,141.6 kWh
-3,141.6 ÷ 31,000 × 100 = 10.1%
-```
+$$
+\begin{aligned}
+\text{Difference} &= 31{,}000 - 27{,}858.4 = 3{,}141.6 \text{ kWh} \\
+\text{Gap} &= \frac{3{,}141.6}{31{,}000} \times 100 = 10.1\%
+\end{aligned}
+$$
 
 So the equipment explains about 90% of the bill. The remaining 10% is the gap to investigate. It could be equipment that was missed, a billing problem, shared areas, or a change in use.
 
@@ -146,9 +150,9 @@ Where the electricity goes:
 
 If the building is 2,000 square metres, the yearly use is:
 
-```text
-27,858.4 ÷ 2,000 = 13.9 kWh per square metre
-```
+$$
+\frac{27{,}858.4}{2{,}000} = 13.9 \text{ kWh per square metre}
+$$
 
 This lets us compare buildings of different sizes.
 
@@ -194,9 +198,9 @@ Each suggested fix can have:
 
 For the time to recover the cost:
 
-```text
-time to recover = estimated cost ÷ estimated yearly saving
-```
+$$
+\text{Time to recover} = \frac{\text{estimated cost}}{\text{estimated yearly saving}}
+$$
 
 If the cost is zero, the fix is immediate. If the saving is zero, the calculation does not apply. We never divide by zero.
 
