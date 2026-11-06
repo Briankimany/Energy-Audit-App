@@ -33,5 +33,4 @@ def register():
 
 @bp.get("/dashboard")
 def dashboard():
-    user = _current_user()
-    return render_template("dashboard.html", user=user)
+    return render_template("dashboard.html")

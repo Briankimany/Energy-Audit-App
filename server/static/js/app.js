@@ -158,26 +158,34 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   const token = getToken();
-  if (token) {
-    const user = await apiSession();
-    if (user) {
-      const path = window.location.pathname;
-      if (path === "/login" || path === "/register") {
-        window.location.href = "/dashboard";
-      } else if (path === "/dashboard") {
-        const data = await apiDashboard();
-        if (data) {
-          const instRes = await apiGet("/api/institution", token);
-          const currency = instRes.data && instRes.data.currency ? instRes.data.currency : "";
-          renderDashboardData(data, user, currency);
-        }
-      }
-    } else {
-      clearToken();
+  const path = window.location.pathname;
+
+  if (!token) {
+    if (path === "/dashboard") {
       window.location.href = "/login";
     }
-  } else if (window.location.pathname === "/dashboard") {
+    return;
+  }
+
+  const user = await apiSession();
+  if (!user) {
+    clearToken();
     window.location.href = "/login";
+    return;
+  }
+
+  if (path === "/login" || path === "/register") {
+    window.location.href = "/dashboard";
+    return;
+  }
+
+  if (path === "/dashboard") {
+    const instRes = await apiGet("/api/institution", token);
+    const currency = instRes.data && instRes.data.currency ? instRes.data.currency : "";
+    const data = await apiDashboard();
+    if (data) {
+      renderDashboardData(data, user, currency);
+    }
   }
 });
 
@@ -200,6 +208,11 @@ function formatCurrency(value, currency) {
 
 function renderDashboardData(data, user, currency) {
   document.getElementById("updated-at").textContent = new Date().toLocaleDateString();
+
+  const subtitle = document.getElementById("page-subtitle");
+  if (subtitle && user.institution_name) {
+    subtitle.textContent = user.institution_name + " · " + user.email;
+  }
 
   const kwhEl = document.getElementById("stat-kwh");
   const costEl = document.getElementById("stat-cost");
